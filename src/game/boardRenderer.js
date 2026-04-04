@@ -246,7 +246,7 @@ function drawCoin(ctx, size, coin) {
   drawRing(ctx, x, y, radius * 0.66, Math.max(1, radius * 0.12), palette.ring);
 }
 
-function drawStriker(ctx, size, striker) {
+function drawStriker(ctx, size, striker, isDimmed = false) {
   const x = percentToCanvas(size, striker.x);
   const y = percentToCanvas(size, striker.y);
   const radius = getStrikerRadius(size);
@@ -259,13 +259,20 @@ function drawStriker(ctx, size, striker) {
     y,
     radius
   );
-  gradient.addColorStop(0, '#fffdf8');
-  gradient.addColorStop(0.5, '#efe1c8');
-  gradient.addColorStop(1, '#d2b896');
+  gradient.addColorStop(0, isDimmed ? '#d9d2c4' : '#fffdf8');
+  gradient.addColorStop(0.5, isDimmed ? '#c7baa4' : '#efe1c8');
+  gradient.addColorStop(1, isDimmed ? '#aa9478' : '#d2b896');
 
   drawCircle(ctx, x, y, radius, gradient);
-  drawRing(ctx, x, y, radius * 0.7, Math.max(1.5, radius * 0.14), 'rgba(153, 69, 45, 0.62)');
-  drawCircle(ctx, x, y, radius * 0.28, '#9b3728');
+  drawRing(
+    ctx,
+    x,
+    y,
+    radius * 0.7,
+    Math.max(1.5, radius * 0.14),
+    isDimmed ? 'rgba(108, 89, 66, 0.72)' : 'rgba(153, 69, 45, 0.62)'
+  );
+  drawCircle(ctx, x, y, radius * 0.28, isDimmed ? '#6e6354' : '#9b3728');
 }
 
 function drawAimGuide(ctx, size, aimState, striker) {
@@ -314,7 +321,7 @@ function drawAimGuide(ctx, size, aimState, striker) {
   );
 }
 
-export function drawBoardScene(ctx, size, boardState, aimState) {
+export function drawBoardScene(ctx, size, boardState, aimState, renderState = {}) {
   ctx.clearRect(0, 0, size, size);
   drawBoardFrame(ctx, size);
   drawBoardMarkings(ctx, size);
@@ -325,7 +332,7 @@ export function drawBoardScene(ctx, size, boardState, aimState) {
   });
 
   if (!boardState.striker.isPocketed) {
-    drawStriker(ctx, size, boardState.striker);
+    drawStriker(ctx, size, boardState.striker, renderState.dimStriker);
     drawAimGuide(ctx, size, aimState, boardState.striker);
   }
 }

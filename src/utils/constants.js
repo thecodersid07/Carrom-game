@@ -5,16 +5,30 @@ export const APP_SUBTITLE =
 
 export const BOARD_CORNERS = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 
-export const STRIKER_POSITION = {
-  x: 50,
-  y: 82,
+export const STRIKER_SHOOTING_RANGE = {
+  minX: 23,
+  maxX: 77,
 };
 
-export const STRIKER_SHOT_POWER = 0.03;
+export const PLAYER_STRIKER_POSITIONS = {
+  1: {
+    x: 50,
+    y: 82,
+  },
+  2: {
+    x: 50,
+    y: 18,
+  },
+};
+
+export const STRIKER_SHOT_POWER = 0.13;
 export const FRICTION_PER_FRAME = 0.985;
 export const MIN_VELOCITY = 0.02;
 export const WALL_BOUNCE_DAMPING = 0.92;
 export const COLLISION_BOUNCE_DAMPING = 0.96;
+export const MIN_SHOT_DRAG = 1.4;
+export const MAX_SHOT_DRAG = 14;
+export const STRIKER_INTERACTION_THRESHOLD = 1.5;
 
 export const COIN_POSITIONS = [
   { id: 'queen', x: 50, y: 50, type: 'queen' },

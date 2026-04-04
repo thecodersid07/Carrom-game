@@ -18,6 +18,10 @@ export function getPocketRadius(size) {
   return percentToCanvas(size, 6);
 }
 
+export function isPointInsideCircle(pointX, pointY, circleX, circleY, radius) {
+  return Math.hypot(pointX - circleX, pointY - circleY) <= radius;
+}
+
 export function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -46,9 +50,11 @@ export function createInitialBoardState({ coinPositions, strikerPosition }) {
       vy: 0,
       isPocketed: false,
     },
+    strikerHomePosition: { ...strikerPosition },
     pendingStrikerReset: false,
     shotInProgress: false,
     coinsPocketedThisTurn: 0,
+    strikerPocketedThisTurn: false,
   };
 }
 
@@ -218,6 +224,7 @@ function handlePocketedPieces(boardState, boardSize) {
     if (strikerInPocket) {
       boardState.striker.isPocketed = true;
       boardState.pendingStrikerReset = true;
+      boardState.strikerPocketedThisTurn = true;
       boardState.striker.vx = 0;
       boardState.striker.vy = 0;
     }
@@ -228,8 +235,8 @@ function handlePocketedPieces(boardState, boardSize) {
   );
 
   if (boardState.pendingStrikerReset && !coinsMoving) {
-    boardState.striker.x = 50;
-    boardState.striker.y = 82;
+    boardState.striker.x = boardState.strikerHomePosition.x;
+    boardState.striker.y = boardState.strikerHomePosition.y;
     boardState.striker.vx = 0;
     boardState.striker.vy = 0;
     boardState.striker.isPocketed = false;
@@ -260,6 +267,24 @@ export function getPointerPosition(canvas, event) {
     x: clamp(event.clientX - rect.left, 0, boardSize),
     y: clamp(event.clientY - rect.top, 0, boardSize),
   };
+}
+
+export function isStrikerOverlappingCoin(boardState, boardSize) {
+  if (boardState.striker.isPocketed) {
+    return false;
+  }
+
+  const strikerRadius = canvasToPercent(boardSize, getStrikerRadius(boardSize));
+
+  return boardState.coins.some((coin) => {
+    const coinRadius = canvasToPercent(boardSize, getCoinRadius(boardSize, coin.type));
+    const distance = Math.hypot(
+      boardState.striker.x - coin.x,
+      boardState.striker.y - coin.y
+    );
+
+    return distance < strikerRadius + coinRadius;
+  });
 }
 
 export function updateBoardState(boardState, boardSize, physics) {
@@ -293,15 +318,28 @@ export function updateBoardState(boardState, boardSize, physics) {
 export function startShot(boardState) {
   boardState.shotInProgress = true;
   boardState.coinsPocketedThisTurn = 0;
+  boardState.strikerPocketedThisTurn = false;
+}
+
+export function resetStriker(boardState, strikerPosition = { x: 50, y: 82 }) {
+  boardState.strikerHomePosition = { ...strikerPosition };
+  boardState.striker.x = strikerPosition.x;
+  boardState.striker.y = strikerPosition.y;
+  boardState.striker.vx = 0;
+  boardState.striker.vy = 0;
+  boardState.striker.isPocketed = false;
+  boardState.pendingStrikerReset = false;
 }
 
 export function finishShot(boardState) {
   const shotSummary = {
     coinsPocketed: boardState.coinsPocketedThisTurn,
+    strikerPocketed: boardState.strikerPocketedThisTurn,
   };
 
   boardState.shotInProgress = false;
   boardState.coinsPocketedThisTurn = 0;
+  boardState.strikerPocketedThisTurn = false;
 
   return shotSummary;
 }
