@@ -13,11 +13,13 @@ import {
   PLAYER_STRIKER_POSITIONS,
   POWER_METER_CYCLE_MS,
   QUEEN_HOME_POSITION,
+  SHOT_POWER_CURVE_EXPONENT,
   STRIKER_PLACEMENT_BUFFER,
-  STRIKER_INTERACTION_THRESHOLD,
   STRIKER_SPAWN_PROTECTION_FRAMES,
   STRIKER_SHOOTING_RANGE,
   STRIKER_SHOT_POWER,
+  STRIKER_HIT_TRANSFER_BOOST,
+  TURN_TIMER_SECONDS,
   WALL_BOUNCE_DAMPING,
   WINNING_SCORE,
 } from '../utils/constants';
@@ -49,14 +51,14 @@ function GameBoard() {
   });
   const [gameOver, setGameOver] = useState(false);
   const [winnerMessage, setWinnerMessage] = useState('');
+  const [turnTimeLeft, setTurnTimeLeft] = useState(TURN_TIMER_SECONDS);
   const [shotPower, setShotPower] = useState(0);
   const [perfectShotActive, setPerfectShotActive] = useState(false);
   const [isSoundMuted, setIsSoundMuted] = useState(false);
-  const [isPlacementKeyPressed, setIsPlacementKeyPressed] = useState(false);
   const [turnFlashVisible, setTurnFlashVisible] = useState(false);
   const [comboState, setComboState] = useState({
     count: 0,
-    bonus: 0,
+    points: 0,
     visible: false,
   });
   const [coinPocketState, setCoinPocketState] = useState({
@@ -72,9 +74,21 @@ function GameBoard() {
   const comboTimeoutRef = useRef(0);
   const coinPocketTimeoutRef = useRef(0);
   const turnFlashTimeoutRef = useRef(0);
+  const turnTimerIntervalRef = useRef(0);
+  const turnTimerLastTickRef = useRef(0);
+  const turnTimeLeftRef = useRef(TURN_TIMER_SECONDS * 1000);
+  const turnTimerExpiredRef = useRef(false);
   const soundManagerRef = useRef(null);
   const hasMountedTurnRef = useRef(false);
   const pendingQueenCoverRef = useRef(null);
+  const placementInputRef = useRef({
+    leftPressed: false,
+    rightPressed: false,
+  });
+  const placementMotionRef = useRef({
+    lastFrameTime: 0,
+    velocity: 0,
+  });
   const getPlayerStrikerPosition = (player) =>
     PLAYER_STRIKER_POSITIONS[player] ?? PLAYER_STRIKER_POSITIONS[1];
   const boardStateRef = useRef(
@@ -96,7 +110,6 @@ function GameBoard() {
     startPointerX: 0,
     startPointerY: 0,
   });
-  const placementKeyPressedRef = useRef(false);
   const powerMeterRef = useRef({
     startTime: 0,
   });
@@ -117,6 +130,81 @@ function GameBoard() {
     setCurrentShotPower(0);
   };
 
+  const resetTurnTimer = () => {
+    turnTimerExpiredRef.current = false;
+    turnTimerLastTickRef.current = 0;
+    turnTimeLeftRef.current = TURN_TIMER_SECONDS * 1000;
+    setTurnTimeLeft(TURN_TIMER_SECONDS);
+  };
+
+  const resetPlacementMotion = () => {
+    placementMotionRef.current.lastFrameTime = 0;
+    placementMotionRef.current.velocity = 0;
+  };
+
+  const moveStrikerByKeyboardStep = (directionStep) => {
+    const boardState = boardStateRef.current;
+
+    if (
+      gameOverRef.current ||
+      boardState.shotInProgress ||
+      isAnyPieceMoving(boardState, MIN_VELOCITY) ||
+      interactionRef.current.mode !== 'idle'
+    ) {
+      return;
+    }
+
+    placeStrikerSafely(
+      boardState,
+      {
+        x: boardState.striker.x + directionStep,
+        y: getPlayerStrikerPosition(activePlayerRef.current).y,
+      },
+      STRIKER_SHOOTING_RANGE,
+      STRIKER_PLACEMENT_BUFFER,
+      STRIKER_SPAWN_PROTECTION_FRAMES,
+      directionStep
+    );
+  };
+
+  const endTurnOnTimeout = () => {
+    if (gameOverRef.current) {
+      return;
+    }
+
+    if (
+      boardStateRef.current.shotInProgress ||
+      isAnyPieceMoving(boardStateRef.current, MIN_VELOCITY)
+    ) {
+      return;
+    }
+
+    const nextPlayer = activePlayerRef.current === 1 ? 2 : 1;
+
+    aimStateRef.current = {
+      isDragging: false,
+      pointerX: 0,
+      pointerY: 0,
+    };
+    interactionRef.current = {
+      mode: 'idle',
+      startPointerX: 0,
+      startPointerY: 0,
+    };
+    resetPlacementMotion();
+    resetPowerMeter();
+    resetComboFeedback();
+    resetCoinPocketFeedback();
+    setActivePlayer(nextPlayer);
+    resetStriker(
+      boardStateRef.current,
+      getPlayerStrikerPosition(nextPlayer),
+      STRIKER_SHOOTING_RANGE,
+      STRIKER_PLACEMENT_BUFFER,
+      STRIKER_SPAWN_PROTECTION_FRAMES
+    );
+  };
+
   const showPerfectShotFeedback = () => {
     setPerfectShotActive(true);
     soundManagerRef.current?.playPerfectShot();
@@ -129,15 +217,15 @@ function GameBoard() {
   const resetComboFeedback = () => {
     setComboState({
       count: 0,
-      bonus: 0,
+      points: 0,
       visible: false,
     });
   };
 
-  const showComboFeedback = (count, bonus) => {
+  const showComboFeedback = (count, points) => {
     setComboState({
       count,
-      bonus,
+      points,
       visible: true,
     });
     window.clearTimeout(comboTimeoutRef.current);
@@ -182,6 +270,7 @@ function GameBoard() {
       startPointerX: 0,
       startPointerY: 0,
     };
+    resetPlacementMotion();
     resetPowerMeter();
     setPerfectShotActive(false);
     resetComboFeedback();
@@ -199,6 +288,7 @@ function GameBoard() {
     });
     setGameOver(false);
     setWinnerMessage('');
+    resetTurnTimer();
   };
 
   useEffect(() => {
@@ -223,30 +313,61 @@ function GameBoard() {
   }, [gameOver]);
 
   useEffect(() => {
+    if (gameOver) {
+      turnTimerExpiredRef.current = false;
+      turnTimerLastTickRef.current = 0;
+      turnTimeLeftRef.current = 0;
+      setTurnTimeLeft(0);
+      return;
+    }
+
+    resetTurnTimer();
+  }, [activePlayer, gameOver]);
+
+  useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.code !== 'ControlLeft' && event.code !== 'ControlRight') {
+      if (event.code !== 'ArrowLeft' && event.code !== 'ArrowRight') {
         return;
       }
 
-      placementKeyPressedRef.current = true;
-      setIsPlacementKeyPressed(true);
+      event.preventDefault();
+
+      if (event.code === 'ArrowLeft') {
+        placementInputRef.current.leftPressed = true;
+      } else {
+        placementInputRef.current.rightPressed = true;
+      }
+
+      if (!event.repeat) {
+        moveStrikerByKeyboardStep(event.code === 'ArrowLeft' ? -0.35 : 0.35);
+      }
     };
 
     const handleKeyUp = (event) => {
-      if (event.code !== 'ControlLeft' && event.code !== 'ControlRight') {
+      if (event.code !== 'ArrowLeft' && event.code !== 'ArrowRight') {
         return;
       }
 
-      placementKeyPressedRef.current = false;
-      setIsPlacementKeyPressed(false);
+      if (event.code === 'ArrowLeft') {
+        placementInputRef.current.leftPressed = false;
+      } else {
+        placementInputRef.current.rightPressed = false;
+      }
+    };
+
+    const handleWindowBlur = () => {
+      placementInputRef.current.leftPressed = false;
+      placementInputRef.current.rightPressed = false;
     };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleWindowBlur);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleWindowBlur);
     };
   }, []);
 
@@ -255,6 +376,43 @@ function GameBoard() {
       soundManagerRef.current?.playWin();
     }
   }, [gameOver]);
+
+  useEffect(() => {
+    turnTimerIntervalRef.current = window.setInterval(() => {
+      if (gameOverRef.current) {
+        turnTimerLastTickRef.current = 0;
+        return;
+      }
+
+      const now = performance.now();
+
+      if (turnTimerLastTickRef.current === 0) {
+        turnTimerLastTickRef.current = now;
+        return;
+      }
+
+      const elapsed = now - turnTimerLastTickRef.current;
+      const nextTimeLeft = Math.max(0, turnTimeLeftRef.current - elapsed);
+
+      turnTimerLastTickRef.current = now;
+      turnTimeLeftRef.current = nextTimeLeft;
+
+      const nextSeconds = Math.ceil(nextTimeLeft / 1000);
+
+      setTurnTimeLeft((currentTimeLeft) =>
+        currentTimeLeft === nextSeconds ? currentTimeLeft : nextSeconds
+      );
+
+      if (nextTimeLeft === 0 && !turnTimerExpiredRef.current) {
+        turnTimerExpiredRef.current = true;
+        endTurnOnTimeout();
+      }
+    }, 100);
+
+    return () => {
+      window.clearInterval(turnTimerIntervalRef.current);
+    };
+  }, []);
 
   const getWinnerMessage = (nextScores) => {
     if (nextScores.player1 >= WINNING_SCORE) {
@@ -283,7 +441,7 @@ function GameBoard() {
     const blackCount = pocketedCoinTypes.filter((type) => type === 'black').length;
     const whiteCount = pocketedCoinTypes.filter((type) => type === 'white').length;
 
-    let score = blackCount + whiteCount * 2;
+    let score = blackCount * 10 + whiteCount * 20;
 
     return score;
   };
@@ -338,6 +496,7 @@ function GameBoard() {
         startPointerX: pointer.x,
         startPointerY: pointer.y,
       };
+      resetPlacementMotion();
 
       canvas.setPointerCapture(event.pointerId);
     };
@@ -357,43 +516,11 @@ function GameBoard() {
         0,
         MAX_SHOT_DRAG
       );
-      const moveX = pointer.x - interactionRef.current.startPointerX;
-      const moveY = pointer.y - interactionRef.current.startPointerY;
-      const horizontalMovePercent = Math.abs(
-        canvasToPercent(canvas.clientWidth, moveX)
-      );
-      const verticalMovePercent = Math.abs(
-        canvasToPercent(canvas.clientWidth, moveY)
-      );
 
       if (interactionRef.current.mode === 'pending') {
-        if (
-          placementKeyPressedRef.current &&
-          horizontalMovePercent > STRIKER_INTERACTION_THRESHOLD &&
-          horizontalMovePercent >= verticalMovePercent
-        ) {
-          interactionRef.current.mode = 'placing';
-        } else if (
-          verticalMovePercent > STRIKER_INTERACTION_THRESHOLD ||
-          dragPercent > MIN_SHOT_DRAG
-        ) {
+        if (dragPercent > MIN_SHOT_DRAG) {
           interactionRef.current.mode = 'aiming';
         }
-      }
-
-      if (interactionRef.current.mode === 'placing') {
-        placeStrikerSafely(
-          boardStateRef.current,
-          {
-            x: canvasToPercent(canvas.clientWidth, pointer.x),
-            y: getPlayerStrikerPosition(activePlayerRef.current).y,
-          },
-          STRIKER_SHOOTING_RANGE,
-          STRIKER_PLACEMENT_BUFFER,
-          STRIKER_SPAWN_PROTECTION_FRAMES
-        );
-        resetPowerMeter();
-        return;
       }
 
       if (interactionRef.current.mode !== 'aiming') {
@@ -422,15 +549,6 @@ function GameBoard() {
     };
 
     const handlePointerUp = (event) => {
-      if (interactionRef.current.mode === 'placing') {
-        if (canvas.hasPointerCapture(event.pointerId)) {
-          canvas.releasePointerCapture(event.pointerId);
-        }
-
-        stopDragging();
-        return;
-      }
-
       if (!aimStateRef.current.isDragging) {
         if (canvas.hasPointerCapture(event.pointerId)) {
           canvas.releasePointerCapture(event.pointerId);
@@ -467,9 +585,10 @@ function GameBoard() {
           const isPerfectShot =
             shotPowerRef.current >= PERFECT_SHOT_RANGE.min &&
             shotPowerRef.current <= PERFECT_SHOT_RANGE.max;
+          const curvedPower = Math.pow(shotPowerRef.current, SHOT_POWER_CURVE_EXPONENT);
           const appliedPower = isPerfectShot
-            ? Math.min(1, shotPowerRef.current * PERFECT_SHOT_BOOST)
-            : shotPowerRef.current;
+            ? Math.min(1, curvedPower * PERFECT_SHOT_BOOST)
+            : curvedPower;
 
           startShot(boardState);
           boardState.striker.vx = baseVelocityX * appliedPower;
@@ -502,6 +621,32 @@ function GameBoard() {
     canvas.addEventListener('pointercancel', handlePointerCancel);
 
     const renderFrame = () => {
+      const now = performance.now();
+      const previousFrameTime = placementMotionRef.current.lastFrameTime;
+      placementMotionRef.current.lastFrameTime = now;
+
+      if (previousFrameTime) {
+        const deltaSeconds = Math.min((now - previousFrameTime) / 1000, 0.05);
+        const moveDirection =
+          (placementInputRef.current.rightPressed ? 1 : 0) -
+          (placementInputRef.current.leftPressed ? 1 : 0);
+        const targetVelocity = moveDirection * 26;
+        const easing = Math.min(deltaSeconds * 16, 1);
+
+        placementMotionRef.current.velocity +=
+          (targetVelocity - placementMotionRef.current.velocity) * easing;
+
+        if (Math.abs(placementMotionRef.current.velocity) < 0.05) {
+          placementMotionRef.current.velocity = 0;
+        }
+
+        if (placementMotionRef.current.velocity !== 0) {
+          moveStrikerByKeyboardStep(
+            placementMotionRef.current.velocity * deltaSeconds
+          );
+        }
+      }
+
       const displaySize = canvas.clientWidth;
 
       if (!displaySize) {
@@ -527,6 +672,7 @@ function GameBoard() {
           collisionTangentialDamping: COLLISION_TANGENTIAL_DAMPING,
           frictionPerFrame: FRICTION_PER_FRAME,
           minVelocity: MIN_VELOCITY,
+          strikerHitTransferBoost: STRIKER_HIT_TRANSFER_BOOST,
           wallBounceDamping: WALL_BOUNCE_DAMPING,
         },
         audioEvents
@@ -579,7 +725,7 @@ function GameBoard() {
 
         if (pendingQueenCoverRef.current?.player === activePlayerRef.current) {
           if (hasFollowCoin) {
-            queenBonus = 5;
+            queenBonus = 50;
           } else {
             respotCoin(
               boardStateRef.current,
@@ -632,7 +778,7 @@ function GameBoard() {
           });
 
           if (comboCount > 1) {
-            showComboFeedback(comboCount, comboBonus);
+            showComboFeedback(comboCount, earnedPoints);
           } else {
             resetComboFeedback();
           }
@@ -787,7 +933,7 @@ function GameBoard() {
             aria-hidden={!comboState.visible}
           >
             Combo x{comboState.count}
-            {comboState.bonus > 0 ? `  +${comboState.bonus}` : ''}
+            {comboState.points > 0 ? `  +${comboState.points}` : ''}
           </div>
           <div
             className={`board-coin-pocket-banner ${coinPocketState.visible ? 'board-coin-pocket-banner-visible' : ''}`}
@@ -825,7 +971,6 @@ function GameBoard() {
         </div>
         <div className="panel-header">
           <p className="panel-kicker">Match Status</p>
-          <h2>Game Board</h2>
         </div>
         <button
           type="button"
@@ -841,19 +986,34 @@ function GameBoard() {
             <span>Player {activePlayer} Turn</span>
           </p>
           <div className="score-card">
-            <div className={`score-row ${activePlayer === 1 ? 'score-row-active' : ''}`}>
-              <span>Player 1</span>
-              <strong>{scores.player1}</strong>
-            </div>
             <div className={`score-row ${activePlayer === 2 ? 'score-row-active' : ''}`}>
               <span>Player 2</span>
-              <strong>{scores.player2}</strong>
+              <div className="score-row-meta">
+                <span
+                  className={`score-row-timer ${activePlayer === 2 ? 'score-row-timer-active' : ''} ${activePlayer === 2 && turnTimeLeft <= 10 ? 'score-row-timer-warning' : ''}`}
+                >
+                  {activePlayer === 2 ? `${turnTimeLeft}s` : `${TURN_TIMER_SECONDS}s`}
+                </span>
+                <strong>{scores.player2}</strong>
+              </div>
+            </div>
+            <div className={`score-row ${activePlayer === 1 ? 'score-row-active' : ''}`}>
+              <span>Player 1</span>
+              <div className="score-row-meta">
+                <span
+                  className={`score-row-timer ${activePlayer === 1 ? 'score-row-timer-active' : ''} ${activePlayer === 1 && turnTimeLeft <= 10 ? 'score-row-timer-warning' : ''}`}
+                >
+                  {activePlayer === 1 ? `${turnTimeLeft}s` : `${TURN_TIMER_SECONDS}s`}
+                </span>
+                <strong>{scores.player1}</strong>
+              </div>
             </div>
           </div>
         </div>
         {gameOver ? (
           <p className="game-over-message">{winnerMessage}</p>
         ) : null}
+        <p className="striker-placement-hint">Use ← and → for moving and adjusting striker</p>
         <div className="power-meter">
           <div className="power-meter-label">
             <span>Shot Power</span>
@@ -885,14 +1045,6 @@ function GameBoard() {
             Perfect Shot!
           </p>
         </div>
-        <p className="rules-copy">
-          Placement: <span>{isPlacementKeyPressed ? 'Ctrl held' : 'Hold Ctrl'}</span>
-        </p>
-        <p className="rules-copy">
-          Player 1 shoots from the bottom line, Player 2 shoots from the top
-          line. Hold Ctrl to move the striker left or right, and turn ends only
-          after every moving piece stops.
-        </p>
         <button type="button" className="restart-button" onClick={resetGame}>
           Restart Game
         </button>

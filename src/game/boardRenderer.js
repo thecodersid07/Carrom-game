@@ -37,6 +37,13 @@ function drawRing(ctx, x, y, radius, lineWidth, strokeStyle) {
   ctx.stroke();
 }
 
+function drawEllipse(ctx, x, y, radiusX, radiusY, fillStyle) {
+  ctx.beginPath();
+  ctx.ellipse(x, y, radiusX, radiusY, 0, 0, Math.PI * 2);
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
+}
+
 function drawBoardFrame(ctx, size) {
   const frameRadius = percentToCanvas(size, 5.8);
   const surfaceInset = percentToCanvas(size, 3.3);
@@ -78,22 +85,14 @@ function drawBoardFrame(ctx, size) {
 
 function drawBoardMarkings(ctx, size) {
   const center = size / 2;
-
+  const baselineInset = percentToCanvas(size, 21);
   drawRing(
     ctx,
     center,
     center,
-    percentToCanvas(size, 13.5),
+    percentToCanvas(size, 11.2),
     percentToCanvas(size, 1),
     'rgba(140, 43, 33, 0.78)'
-  );
-  drawRing(
-    ctx,
-    center,
-    center,
-    percentToCanvas(size, 16),
-    percentToCanvas(size, 0.7),
-    'rgba(255, 240, 214, 0.45)'
   );
   drawCircle(
     ctx,
@@ -111,8 +110,8 @@ function drawBoardMarkings(ctx, size) {
     'rgba(253, 233, 202, 0.75)'
   );
 
-  ctx.strokeStyle = 'rgba(128, 47, 37, 0.45)';
-  ctx.lineWidth = percentToCanvas(size, 0.5);
+  ctx.strokeStyle = 'rgba(128, 47, 37, 0.34)';
+  ctx.lineWidth = percentToCanvas(size, 0.34);
   ctx.strokeRect(
     percentToCanvas(size, 16),
     percentToCanvas(size, 16),
@@ -120,7 +119,8 @@ function drawBoardMarkings(ctx, size) {
     percentToCanvas(size, 68)
   );
 
-  ctx.strokeStyle = 'rgba(128, 47, 37, 0.28)';
+  ctx.strokeStyle = 'rgba(128, 47, 37, 0.18)';
+  ctx.lineWidth = percentToCanvas(size, 0.22);
   ctx.strokeRect(
     percentToCanvas(size, 28),
     percentToCanvas(size, 28),
@@ -128,48 +128,76 @@ function drawBoardMarkings(ctx, size) {
     percentToCanvas(size, 44)
   );
 
-  ctx.strokeStyle = 'rgba(128, 47, 37, 0.4)';
-  ctx.lineWidth = percentToCanvas(size, 0.35);
+  ctx.strokeStyle = 'rgba(128, 47, 37, 0.26)';
+  ctx.lineWidth = percentToCanvas(size, 0.22);
   ctx.beginPath();
-  ctx.moveTo(percentToCanvas(size, 26.7), percentToCanvas(size, 26.7));
-  ctx.lineTo(percentToCanvas(size, 73.3), percentToCanvas(size, 73.3));
-  ctx.moveTo(percentToCanvas(size, 73.3), percentToCanvas(size, 26.7));
-  ctx.lineTo(percentToCanvas(size, 26.7), percentToCanvas(size, 73.3));
+  ctx.moveTo(percentToCanvas(size, 27.3), percentToCanvas(size, 27.3));
+  ctx.lineTo(percentToCanvas(size, 72.7), percentToCanvas(size, 72.7));
+  ctx.moveTo(percentToCanvas(size, 72.7), percentToCanvas(size, 27.3));
+  ctx.lineTo(percentToCanvas(size, 27.3), percentToCanvas(size, 72.7));
   ctx.stroke();
 
-  ctx.strokeStyle = 'rgba(128, 47, 37, 0.55)';
-  ctx.beginPath();
-  ctx.moveTo(percentToCanvas(size, 20), percentToCanvas(size, 21));
-  ctx.lineTo(percentToCanvas(size, 80), percentToCanvas(size, 21));
-  ctx.moveTo(percentToCanvas(size, 20), percentToCanvas(size, 79));
-  ctx.lineTo(percentToCanvas(size, 80), percentToCanvas(size, 79));
-  ctx.stroke();
-
-  drawCornerArrows(ctx, size);
+  drawStrikerLanes(ctx, size, baselineInset);
 }
 
-function drawCornerArrows(ctx, size) {
-  const arrows = [
-    { x: 18, y: 18, rotation: 45 },
-    { x: 82, y: 18, rotation: 135 },
-    { x: 18, y: 82, rotation: -45 },
-    { x: 82, y: 82, rotation: -135 },
+function drawStrikerLanes(ctx, size, baselineInset) {
+  const innerRadiusPercent = 0.8;
+  const ringWidth = percentToCanvas(size, 0.38);
+  const strikerRadius = getStrikerRadius(size);
+  const outerRadius = strikerRadius - ringWidth / 2;
+  const laneSpanStart = percentToCanvas(size, 25);
+  const laneSpanEnd = percentToCanvas(size, 75);
+  const laneGap = strikerRadius * 2;
+  const laneHalfGap = laneGap / 2;
+  const innerRadius = percentToCanvas(size, innerRadiusPercent);
+  const lineInset = outerRadius + percentToCanvas(size, 0.6);
+  const leftLaneX = baselineInset - laneHalfGap;
+  const rightLaneX = baselineInset + laneHalfGap;
+  const topLaneY = baselineInset - laneHalfGap;
+  const bottomLaneY = baselineInset + laneHalfGap;
+
+  ctx.strokeStyle = 'rgba(146, 48, 39, 0.74)';
+  ctx.lineWidth = percentToCanvas(size, 0.48);
+  ctx.beginPath();
+  ctx.moveTo(laneSpanStart + lineInset, topLaneY);
+  ctx.lineTo(laneSpanEnd - lineInset, topLaneY);
+  ctx.moveTo(laneSpanStart + lineInset, bottomLaneY);
+  ctx.lineTo(laneSpanEnd - lineInset, bottomLaneY);
+  ctx.moveTo(laneSpanStart + lineInset, size - topLaneY);
+  ctx.lineTo(laneSpanEnd - lineInset, size - topLaneY);
+  ctx.moveTo(laneSpanStart + lineInset, size - bottomLaneY);
+  ctx.lineTo(laneSpanEnd - lineInset, size - bottomLaneY);
+  ctx.moveTo(leftLaneX, laneSpanStart + lineInset);
+  ctx.lineTo(leftLaneX, laneSpanEnd - lineInset);
+  ctx.moveTo(rightLaneX, laneSpanStart + lineInset);
+  ctx.lineTo(rightLaneX, laneSpanEnd - lineInset);
+  ctx.moveTo(size - leftLaneX, laneSpanStart + lineInset);
+  ctx.lineTo(size - leftLaneX, laneSpanEnd - lineInset);
+  ctx.moveTo(size - rightLaneX, laneSpanStart + lineInset);
+  ctx.lineTo(size - rightLaneX, laneSpanEnd - lineInset);
+  ctx.stroke();
+
+  const guidePoints = [
+    { x: laneSpanStart, y: baselineInset },
+    { x: laneSpanEnd, y: baselineInset },
+    { x: laneSpanStart, y: size - baselineInset },
+    { x: laneSpanEnd, y: size - baselineInset },
+    { x: baselineInset, y: laneSpanStart },
+    { x: baselineInset, y: laneSpanEnd },
+    { x: size - baselineInset, y: laneSpanStart },
+    { x: size - baselineInset, y: laneSpanEnd },
   ];
 
-  ctx.strokeStyle = 'rgba(128, 47, 37, 0.65)';
-  ctx.lineWidth = percentToCanvas(size, 0.5);
-
-  arrows.forEach((arrow) => {
-    ctx.save();
-    ctx.translate(percentToCanvas(size, arrow.x), percentToCanvas(size, arrow.y));
-    ctx.rotate((arrow.rotation * Math.PI) / 180);
-    const arm = percentToCanvas(size, 9);
-    ctx.beginPath();
-    ctx.moveTo(0, arm);
-    ctx.lineTo(0, 0);
-    ctx.lineTo(arm, 0);
-    ctx.stroke();
-    ctx.restore();
+  guidePoints.forEach((guide) => {
+    drawRing(
+      ctx,
+      guide.x,
+      guide.y,
+      outerRadius,
+      ringWidth,
+      'rgba(146, 48, 39, 0.88)'
+    );
+    drawCircle(ctx, guide.x, guide.y, innerRadius, 'rgba(146, 48, 39, 0.9)');
   });
 }
 
@@ -187,7 +215,7 @@ function drawPockets(ctx, size) {
   BOARD_CORNERS.forEach((corner) => {
     const [x, y] = positions[corner];
     const outerRadius = pocketRadius * 1.08;
-    const innerRadius = pocketRadius * 0.88;
+    const innerRadius = pocketRadius * 0.86;
 
     const glowGradient = ctx.createRadialGradient(
       x,
@@ -261,27 +289,60 @@ function drawPockets(ctx, size) {
 function getCoinPalette(type) {
   if (type === 'black') {
     return {
-      base: '#2a2a2a',
-      edge: '#111111',
-      highlight: 'rgba(255, 255, 255, 0.2)',
-      ring: 'rgba(255, 255, 255, 0.08)',
+      rim: '#08090b',
+      outer: '#17191d',
+      mid: '#31343b',
+      core: '#0b0c0e',
+      topHighlight: 'rgba(230, 234, 240, 0.2)',
+      specular: 'rgba(255, 255, 255, 0.16)',
+      border: 'rgba(255, 255, 255, 0.08)',
+      bevelLight: 'rgba(255, 255, 255, 0.08)',
+      bevelDark: 'rgba(0, 0, 0, 0.34)',
+      grooveShadow: 'rgba(0, 0, 0, 0.48)',
+      grooveLight: 'rgba(255, 255, 255, 0.14)',
+      centerFill: '#1d2026',
+      centerEdge: '#050506',
+      shadow: 'rgba(28, 18, 10, 0.24)',
+      glow: null,
     };
   }
 
   if (type === 'queen') {
     return {
-      base: '#b32822',
-      edge: '#811712',
-      highlight: 'rgba(255, 219, 199, 0.35)',
-      ring: 'rgba(255, 238, 214, 0.5)',
+      rim: '#82140f',
+      outer: '#c11d16',
+      mid: '#f54233',
+      core: '#9c130f',
+      topHighlight: 'rgba(255, 224, 214, 0.34)',
+      specular: 'rgba(255, 247, 243, 0.24)',
+      border: 'rgba(255, 230, 223, 0.22)',
+      bevelLight: 'rgba(255, 238, 232, 0.16)',
+      bevelDark: 'rgba(108, 13, 10, 0.24)',
+      grooveShadow: 'rgba(109, 12, 8, 0.34)',
+      grooveLight: 'rgba(255, 238, 232, 0.18)',
+      centerFill: '#ea1f19',
+      centerEdge: '#98110d',
+      shadow: 'rgba(58, 18, 14, 0.24)',
+      glow: 'rgba(211, 47, 39, 0.12)',
     };
   }
 
   return {
-    base: '#f3eadb',
-    edge: '#d7c5aa',
-    highlight: 'rgba(255, 255, 255, 0.5)',
-    ring: 'rgba(115, 79, 49, 0.14)',
+    rim: '#ddc8aa',
+    outer: '#f2e0c4',
+    mid: '#fff6e8',
+    core: '#d8bf9f',
+    topHighlight: 'rgba(255, 255, 255, 0.5)',
+    specular: 'rgba(255, 255, 255, 0.3)',
+    border: 'rgba(133, 101, 66, 0.16)',
+    bevelLight: 'rgba(255, 255, 255, 0.18)',
+    bevelDark: 'rgba(122, 89, 54, 0.16)',
+    grooveShadow: 'rgba(151, 115, 74, 0.22)',
+    grooveLight: 'rgba(255, 255, 255, 0.3)',
+    centerFill: '#f7ead6',
+    centerEdge: '#d4ba96',
+    shadow: 'rgba(81, 57, 33, 0.18)',
+    glow: null,
   };
 }
 
@@ -291,20 +352,116 @@ function drawCoin(ctx, size, coin) {
   const radius = getCoinRadius(size, coin.type);
   const palette = getCoinPalette(coin.type);
 
-  const gradient = ctx.createRadialGradient(
-    x - radius * 0.35,
-    y - radius * 0.4,
-    radius * 0.1,
+  if (palette.glow) {
+    ctx.save();
+    ctx.shadowColor = palette.glow;
+    ctx.shadowBlur = radius * 0.7;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    drawCircle(ctx, x, y, radius * 0.98, 'rgba(255, 255, 255, 0.02)');
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.shadowColor = palette.shadow;
+  ctx.shadowBlur = radius * 0.5;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = Math.max(1, radius * 0.24);
+  drawEllipse(ctx, x, y + radius * 0.22, radius * 0.9, radius * 0.4, 'rgba(50, 29, 12, 0.16)');
+  ctx.restore();
+
+  const bodyGradient = ctx.createRadialGradient(
+    x - radius * 0.2,
+    y - radius * 0.24,
+    radius * 0.08,
     x,
     y,
     radius
   );
-  gradient.addColorStop(0, palette.highlight);
-  gradient.addColorStop(0.35, palette.base);
-  gradient.addColorStop(1, palette.edge);
+  bodyGradient.addColorStop(0, palette.mid);
+  bodyGradient.addColorStop(0.42, palette.outer);
+  bodyGradient.addColorStop(0.8, palette.core);
+  bodyGradient.addColorStop(1, palette.rim);
 
-  drawCircle(ctx, x, y, radius, gradient);
-  drawRing(ctx, x, y, radius * 0.66, Math.max(1, radius * 0.12), palette.ring);
+  drawCircle(ctx, x, y, radius, bodyGradient);
+
+  drawRing(ctx, x, y, radius * 0.98, Math.max(1, radius * 0.08), palette.border);
+
+  const outerGroove = ctx.createRadialGradient(
+    x - radius * 0.08,
+    y - radius * 0.12,
+    radius * 0.18,
+    x,
+    y,
+    radius * 0.84
+  );
+  outerGroove.addColorStop(0, 'rgba(255, 255, 255, 0)');
+  outerGroove.addColorStop(0.72, 'rgba(255, 255, 255, 0)');
+  outerGroove.addColorStop(0.9, palette.grooveShadow);
+  outerGroove.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  drawCircle(ctx, x, y, radius * 0.82, outerGroove);
+
+  drawRing(ctx, x, y, radius * 0.63, Math.max(1, radius * 0.1), palette.grooveLight);
+  drawRing(ctx, x, y, radius * 0.56, Math.max(1, radius * 0.075), palette.grooveShadow);
+  drawRing(ctx, x, y, radius * 0.36, Math.max(1, radius * 0.08), palette.grooveLight);
+  drawRing(ctx, x, y, radius * 0.29, Math.max(1, radius * 0.06), palette.grooveShadow);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  const rimHighlight = ctx.createRadialGradient(
+    x - radius * 0.24,
+    y - radius * 0.3,
+    radius * 0.04,
+    x,
+    y,
+    radius * 0.92
+  );
+  rimHighlight.addColorStop(0, palette.bevelLight);
+  rimHighlight.addColorStop(0.55, 'rgba(255, 255, 255, 0.05)');
+  rimHighlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  drawCircle(ctx, x, y, radius * 0.94, rimHighlight);
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  const topHighlight = ctx.createRadialGradient(
+    x - radius * 0.18,
+    y - radius * 0.24,
+    radius * 0.02,
+    x - radius * 0.04,
+    y - radius * 0.08,
+    radius * 0.42
+  );
+  topHighlight.addColorStop(0, palette.topHighlight);
+  topHighlight.addColorStop(0.5, 'rgba(255, 255, 255, 0.07)');
+  topHighlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  drawCircle(ctx, x, y, radius * 0.62, topHighlight);
+  ctx.restore();
+
+  const centerGradient = ctx.createRadialGradient(
+    x - radius * 0.08,
+    y - radius * 0.1,
+    radius * 0.04,
+    x,
+    y,
+    radius * 0.24
+  );
+  centerGradient.addColorStop(0, palette.mid);
+  centerGradient.addColorStop(0.35, palette.centerFill);
+  centerGradient.addColorStop(1, palette.centerEdge);
+  drawCircle(ctx, x, y, radius * 0.24, centerGradient);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  drawEllipse(
+    ctx,
+    x - radius * 0.1,
+    y - radius * 0.14,
+    radius * 0.18,
+    radius * 0.1,
+    palette.specular
+  );
+  ctx.restore();
 }
 
 function drawStriker(ctx, size, striker, isDimmed = false, isPerfectShotActive = false) {
@@ -330,30 +487,135 @@ function drawStriker(ctx, size, striker, isDimmed = false, isPerfectShotActive =
     y,
     radius
   );
-  gradient.addColorStop(0, isDimmed ? '#d9d2c4' : '#fffdf8');
-  gradient.addColorStop(0.5, isDimmed ? '#c7baa4' : '#efe1c8');
-  gradient.addColorStop(1, isDimmed ? '#aa9478' : '#d2b896');
+  gradient.addColorStop(0, isDimmed ? '#efe4d1' : '#fff4df');
+  gradient.addColorStop(0.55, isDimmed ? '#dcc6a3' : '#f3d6ab');
+  gradient.addColorStop(1, isDimmed ? '#b39168' : '#d5ae75');
 
   drawCircle(ctx, x, y, radius, gradient);
   drawRing(
     ctx,
     x,
     y,
-    radius * 0.7,
-    Math.max(1.5, radius * 0.14),
+    radius * 0.94,
+    Math.max(1.5, radius * 0.15),
     isDimmed
-      ? 'rgba(108, 89, 66, 0.72)'
+      ? 'rgba(151, 115, 78, 0.88)'
+      : isPerfectShotActive
+        ? 'rgba(71, 163, 84, 0.95)'
+        : 'rgba(248, 237, 216, 0.9)'
+  );
+  drawRing(
+    ctx,
+    x,
+    y,
+    radius * 0.83,
+    Math.max(1.1, radius * 0.07),
+    isDimmed
+      ? 'rgba(111, 22, 18, 0.76)'
       : isPerfectShotActive
         ? 'rgba(71, 163, 84, 0.9)'
-        : 'rgba(153, 69, 45, 0.62)'
+        : 'rgba(162, 13, 15, 0.92)'
   );
   drawCircle(
     ctx,
     x,
     y,
-    radius * 0.28,
-    isDimmed ? '#6e6354' : isPerfectShotActive ? '#4fae58' : '#9b3728'
+    radius * 0.78,
+    isDimmed ? 'rgba(132, 100, 72, 0.12)' : 'rgba(255, 246, 231, 0.22)'
   );
+  drawRing(
+    ctx,
+    x,
+    y,
+    radius * 0.75,
+    Math.max(1, radius * 0.06),
+    isDimmed
+      ? 'rgba(32, 27, 22, 0.72)'
+      : isPerfectShotActive
+        ? 'rgba(46, 118, 60, 0.9)'
+        : 'rgba(20, 18, 17, 0.92)'
+  );
+
+  ctx.save();
+  ctx.translate(x, y);
+
+  for (let index = 0; index < 8; index += 1) {
+    ctx.save();
+    ctx.rotate((Math.PI / 4) * index);
+    ctx.beginPath();
+    ctx.moveTo(0, -radius * 0.16);
+    ctx.lineTo(radius * 0.12, -radius * 0.16);
+    ctx.lineTo(0, -radius * 0.64);
+    ctx.lineTo(-radius * 0.12, -radius * 0.16);
+    ctx.closePath();
+    ctx.fillStyle =
+      index % 2 === 0
+        ? isDimmed
+          ? '#8b2a27'
+          : '#b40f17'
+        : isDimmed
+          ? '#26211d'
+          : '#121212';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(0, -radius * 0.24);
+    ctx.lineTo(radius * 0.055, -radius * 0.24);
+    ctx.lineTo(0, -radius * 0.41);
+    ctx.lineTo(-radius * 0.055, -radius * 0.24);
+    ctx.closePath();
+    ctx.fillStyle = index % 2 === 0 ? '#f6ead7' : '#efe0c9';
+    ctx.globalAlpha = isDimmed ? 0.35 : 0.9;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  ctx.strokeStyle = isDimmed ? 'rgba(129, 33, 27, 0.68)' : 'rgba(171, 14, 18, 0.9)';
+  ctx.lineWidth = Math.max(1, radius * 0.055);
+  ctx.beginPath();
+  for (let index = 0; index < 8; index += 1) {
+    const startAngle = -Math.PI / 2 + index * (Math.PI / 4) + Math.PI / 12;
+    const endAngle = startAngle + Math.PI / 6;
+    ctx.arc(0, 0, radius * 0.6, startAngle, endAngle);
+  }
+  ctx.stroke();
+
+  for (let index = 0; index < 8; index += 1) {
+    const angle = -Math.PI / 2 + index * (Math.PI / 4);
+    drawCircle(
+      ctx,
+      Math.cos(angle) * radius * 0.61,
+      Math.sin(angle) * radius * 0.61,
+      radius * 0.07,
+      isDimmed ? '#2d2824' : '#111111'
+    );
+  }
+
+  const centerGradient = ctx.createRadialGradient(
+    -radius * 0.12,
+    -radius * 0.14,
+    radius * 0.04,
+    0,
+    0,
+    radius * 0.28
+  );
+  centerGradient.addColorStop(0, isDimmed ? '#cf3e39' : '#f22b27');
+  centerGradient.addColorStop(0.45, isDimmed ? '#a51012' : '#c30008');
+  centerGradient.addColorStop(1, isDimmed ? '#5a0707' : '#6d0004');
+
+  drawCircle(ctx, 0, 0, radius * 0.27, centerGradient);
+  drawRing(
+    ctx,
+    0,
+    0,
+    radius * 0.27,
+    Math.max(1.1, radius * 0.08),
+    isDimmed ? 'rgba(92, 18, 16, 0.75)' : 'rgba(123, 7, 7, 0.95)'
+  );
+  drawCircle(ctx, 0, 0, radius * 0.09, isDimmed ? '#7d0d0d' : '#cc1112');
+
+  ctx.restore();
 }
 
 function drawAimGuide(ctx, size, aimState, striker) {

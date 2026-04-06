@@ -9,15 +9,15 @@ export function canvasToPercent(size, value) {
 }
 
 export function getCoinRadius(size, type) {
-  return percentToCanvas(size, type === 'queen' ? 2.95 : 2.675);
+  return percentToCanvas(size, 2.35);
 }
 
 export function getStrikerRadius(size) {
-  return percentToCanvas(size, 3.7);
+  return percentToCanvas(size, 2.9);
 }
 
 export function getPocketRadius(size) {
-  return percentToCanvas(size, 6);
+  return percentToCanvas(size, 4.4);
 }
 
 export function isPointInsideCircle(pointX, pointY, circleX, circleY, radius) {
@@ -29,15 +29,16 @@ export function clamp(value, min, max) {
 }
 
 function getCoinRadiusPercent(type) {
-  return type === 'queen' ? 2.95 : 2.675;
+  return 2.35;
 }
 
 function getStrikerRadiusPercent() {
-  return 3.7;
+  return 2.7;
 }
 
 function getPocketCenters() {
-  const pocketOffset = 9.4;
+  const pocketRadiusPercent = 4.4;
+  const pocketOffset = BOARD_PLAYFIELD_INSET + pocketRadiusPercent * 0.98;
 
   return [
     { x: pocketOffset, y: pocketOffset },
@@ -107,12 +108,15 @@ export function findSafeStrikerPlacement(
   boardState,
   strikerPosition,
   shootingRange,
-  placementBuffer = 0
+  placementBuffer = 0,
+  preferredDirection = 0
 ) {
   const baselineY = strikerPosition.y;
   const minX = shootingRange?.minX ?? getStrikerRadiusPercent();
   const maxX = shootingRange?.maxX ?? 100 - getStrikerRadiusPercent();
   const preferredX = clamp(strikerPosition.x, minX, maxX);
+  const stepSize = 0.4;
+  const scanDirection = preferredDirection === 0 ? 0 : Math.sign(preferredDirection);
 
   if (canPlaceStrikerAt(boardState, preferredX, baselineY, placementBuffer)) {
     return {
@@ -121,7 +125,26 @@ export function findSafeStrikerPlacement(
     };
   }
 
-  const stepSize = 0.4;
+  if (scanDirection !== 0) {
+    for (
+      let candidateX = preferredX + stepSize * scanDirection;
+      candidateX >= minX && candidateX <= maxX;
+      candidateX += stepSize * scanDirection
+    ) {
+      if (canPlaceStrikerAt(boardState, candidateX, baselineY, placementBuffer)) {
+        return {
+          x: candidateX,
+          y: baselineY,
+        };
+      }
+    }
+
+    return {
+      x: clamp(boardState.striker.x, minX, maxX),
+      y: baselineY,
+    };
+  }
+
   const maxOffset = Math.max(preferredX - minX, maxX - preferredX);
 
   for (let offset = stepSize; offset <= maxOffset + stepSize; offset += stepSize) {
@@ -324,6 +347,7 @@ function resolvePieceCollision(firstPiece, secondPiece, physics, audioEvents) {
     secondPiece.vx * tangentX + secondPiece.vy * tangentY;
   const restitution = physics.collisionBounceDamping;
   const tangentDamping = physics.collisionTangentialDamping ?? 1;
+  const strikerHitTransferBoost = physics.strikerHitTransferBoost ?? 1;
   const nextFirstNormalVelocity =
     ((1 - restitution) * firstNormalVelocity +
       (1 + restitution) * secondNormalVelocity) /
@@ -345,6 +369,14 @@ function resolvePieceCollision(firstPiece, secondPiece, physics, audioEvents) {
   secondPiece.vy =
     nextSecondNormalVelocity * normalY +
     secondTangentVelocity * tangentY * tangentDamping;
+
+  if (firstPiece.key === 'striker' && secondPiece.key !== 'striker') {
+    secondPiece.vx *= strikerHitTransferBoost;
+    secondPiece.vy *= strikerHitTransferBoost;
+  } else if (secondPiece.key === 'striker' && firstPiece.key !== 'striker') {
+    firstPiece.vx *= strikerHitTransferBoost;
+    firstPiece.vy *= strikerHitTransferBoost;
+  }
 
   if (audioEvents) {
     audioEvents.push({
@@ -554,13 +586,15 @@ export function placeStrikerSafely(
   strikerPosition = { x: 50, y: 82 },
   shootingRange,
   placementBuffer = 0,
-  spawnProtectionFrames = 0
+  spawnProtectionFrames = 0,
+  preferredDirection = 0
 ) {
   const safePlacement = findSafeStrikerPlacement(
     boardState,
     strikerPosition,
     shootingRange,
-    placementBuffer
+    placementBuffer,
+    preferredDirection
   );
 
   boardState.strikerHomePosition = { ...safePlacement };
