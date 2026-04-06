@@ -49,6 +49,7 @@ function GameBoard() {
     player1: 0,
     player2: 0,
   });
+  const [gameStarted, setGameStarted] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [winnerMessage, setWinnerMessage] = useState('');
   const [turnTimeLeft, setTurnTimeLeft] = useState(TURN_TIMER_SECONDS);
@@ -68,6 +69,7 @@ function GameBoard() {
   const canvasRef = useRef(null);
   const hasLoggedDebugRef = useRef(false);
   const activePlayerRef = useRef(1);
+  const gameStartedRef = useRef(false);
   const gameOverRef = useRef(false);
   const shotPowerRef = useRef(0);
   const perfectShotTimeoutRef = useRef(0);
@@ -146,6 +148,7 @@ function GameBoard() {
     const boardState = boardStateRef.current;
 
     if (
+      !gameStartedRef.current ||
       gameOverRef.current ||
       boardState.shotInProgress ||
       isAnyPieceMoving(boardState, MIN_VELOCITY) ||
@@ -173,6 +176,7 @@ function GameBoard() {
     }
 
     if (
+      !gameStartedRef.current ||
       boardStateRef.current.shotInProgress ||
       isAnyPieceMoving(boardStateRef.current, MIN_VELOCITY)
     ) {
@@ -252,7 +256,7 @@ function GameBoard() {
     }, 850);
   };
 
-  const resetGame = () => {
+  const resetGame = (shouldStart = false) => {
     boardStateRef.current = createInitialBoardState({
       coinPositions: COIN_POSITIONS,
       strikerPosition: getPlayerStrikerPosition(1),
@@ -282,13 +286,19 @@ function GameBoard() {
     setTurnFlashVisible(false);
     pendingQueenCoverRef.current = null;
     setActivePlayer(1);
+    activePlayerRef.current = 1;
     setScores({
       player1: 0,
       player2: 0,
     });
+    setGameStarted(shouldStart);
     setGameOver(false);
     setWinnerMessage('');
     resetTurnTimer();
+  };
+
+  const handleStartOrRestart = () => {
+    resetGame(true);
   };
 
   useEffect(() => {
@@ -296,6 +306,15 @@ function GameBoard() {
   }, [activePlayer]);
 
   useEffect(() => {
+    gameStartedRef.current = gameStarted;
+  }, [gameStarted]);
+
+  useEffect(() => {
+    if (!gameStarted) {
+      setTurnFlashVisible(false);
+      return;
+    }
+
     if (!hasMountedTurnRef.current) {
       hasMountedTurnRef.current = true;
       return;
@@ -306,13 +325,21 @@ function GameBoard() {
     turnFlashTimeoutRef.current = window.setTimeout(() => {
       setTurnFlashVisible(false);
     }, 900);
-  }, [activePlayer]);
+  }, [activePlayer, gameStarted]);
 
   useEffect(() => {
     gameOverRef.current = gameOver;
   }, [gameOver]);
 
   useEffect(() => {
+    if (!gameStarted) {
+      turnTimerExpiredRef.current = false;
+      turnTimerLastTickRef.current = 0;
+      turnTimeLeftRef.current = TURN_TIMER_SECONDS * 1000;
+      setTurnTimeLeft(TURN_TIMER_SECONDS);
+      return;
+    }
+
     if (gameOver) {
       turnTimerExpiredRef.current = false;
       turnTimerLastTickRef.current = 0;
@@ -322,7 +349,7 @@ function GameBoard() {
     }
 
     resetTurnTimer();
-  }, [activePlayer, gameOver]);
+  }, [activePlayer, gameOver, gameStarted]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -379,7 +406,7 @@ function GameBoard() {
 
   useEffect(() => {
     turnTimerIntervalRef.current = window.setInterval(() => {
-      if (gameOverRef.current) {
+      if (!gameStartedRef.current || gameOverRef.current) {
         turnTimerLastTickRef.current = 0;
         return;
       }
@@ -466,7 +493,11 @@ function GameBoard() {
 
       const boardState = boardStateRef.current;
 
-      if (gameOverRef.current || isAnyPieceMoving(boardState, MIN_VELOCITY)) {
+      if (
+        !gameStartedRef.current ||
+        gameOverRef.current ||
+        isAnyPieceMoving(boardState, MIN_VELOCITY)
+      ) {
         return;
       }
 
@@ -628,8 +659,10 @@ function GameBoard() {
       if (previousFrameTime) {
         const deltaSeconds = Math.min((now - previousFrameTime) / 1000, 0.05);
         const moveDirection =
-          (placementInputRef.current.rightPressed ? 1 : 0) -
-          (placementInputRef.current.leftPressed ? 1 : 0);
+          gameStartedRef.current
+            ? (placementInputRef.current.rightPressed ? 1 : 0) -
+              (placementInputRef.current.leftPressed ? 1 : 0)
+            : 0;
         const targetVelocity = moveDirection * 26;
         const easing = Math.min(deltaSeconds * 16, 1);
 
@@ -664,19 +697,21 @@ function GameBoard() {
 
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       const audioEvents = [];
-      updateBoardState(
-        boardStateRef.current,
-        displaySize,
-        {
-          collisionBounceDamping: COLLISION_BOUNCE_DAMPING,
-          collisionTangentialDamping: COLLISION_TANGENTIAL_DAMPING,
-          frictionPerFrame: FRICTION_PER_FRAME,
-          minVelocity: MIN_VELOCITY,
-          strikerHitTransferBoost: STRIKER_HIT_TRANSFER_BOOST,
-          wallBounceDamping: WALL_BOUNCE_DAMPING,
-        },
-        audioEvents
-      );
+      if (gameStartedRef.current) {
+        updateBoardState(
+          boardStateRef.current,
+          displaySize,
+          {
+            collisionBounceDamping: COLLISION_BOUNCE_DAMPING,
+            collisionTangentialDamping: COLLISION_TANGENTIAL_DAMPING,
+            frictionPerFrame: FRICTION_PER_FRAME,
+            minVelocity: MIN_VELOCITY,
+            strikerHitTransferBoost: STRIKER_HIT_TRANSFER_BOOST,
+            wallBounceDamping: WALL_BOUNCE_DAMPING,
+          },
+          audioEvents
+        );
+      }
 
       audioEvents.forEach((audioEvent) => {
         if (audioEvent.type === 'striker-hit') {
@@ -708,7 +743,7 @@ function GameBoard() {
       const dimStriker =
         !isMovingNow && isStrikerOverlappingCoin(boardStateRef.current, displaySize);
 
-      if (boardStateRef.current.shotInProgress && !isMovingNow) {
+      if (gameStartedRef.current && boardStateRef.current.shotInProgress && !isMovingNow) {
         const shotSummary = finishShot(boardStateRef.current);
         const scorePenalty = shotSummary.strikerPocketed ? 1 : 0;
         const blackCount = shotSummary.pocketedCoinTypes.filter(
@@ -946,7 +981,11 @@ function GameBoard() {
               <div className="board-game-over-card">
                 <p className="board-game-over-kicker">Match Complete</p>
                 <h3 className="board-game-over-title">{boardWinnerMessage}</h3>
-                <button type="button" className="restart-button" onClick={resetGame}>
+                <button
+                  type="button"
+                  className="restart-button"
+                  onClick={handleStartOrRestart}
+                >
                   Play Again
                 </button>
               </div>
@@ -972,14 +1011,23 @@ function GameBoard() {
         <div className="panel-header">
           <p className="panel-kicker">Match Status</p>
         </div>
-        <button
-          type="button"
-          className="sound-toggle"
-          onClick={handleSoundToggle}
-          aria-pressed={isSoundMuted}
-        >
-          {isSoundMuted ? 'Unmute' : 'Mute'}
-        </button>
+        <div className="panel-controls">
+          <button
+            type="button"
+            className="restart-button panel-start-button"
+            onClick={handleStartOrRestart}
+          >
+            {gameStarted ? 'Restart Game' : 'Start Game'}
+          </button>
+          <button
+            type="button"
+            className="sound-toggle"
+            onClick={handleSoundToggle}
+            aria-pressed={isSoundMuted}
+          >
+            {isSoundMuted ? 'Unmute' : 'Mute'}
+          </button>
+        </div>
         <div className="turn-panel">
           <p className="turn-label">
             Current Turn
@@ -1045,9 +1093,6 @@ function GameBoard() {
             Perfect Shot!
           </p>
         </div>
-        <button type="button" className="restart-button" onClick={resetGame}>
-          Restart Game
-        </button>
       </aside>
     </section>
   );

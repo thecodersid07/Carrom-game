@@ -369,7 +369,7 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  gap: 16px;
+  gap: 12px;
 }
 
 .info-panel h2 {
@@ -386,6 +386,14 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  margin-bottom: -2px;
+}
+
+.panel-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .panel-kicker {
@@ -419,6 +427,7 @@
   flex-direction: column;
   gap: 14px;
   padding: 18px;
+  margin-top: -2px;
   border-radius: 22px;
   background:
     linear-gradient(180deg, rgba(24, 25, 30, 0.95), rgba(14, 15, 20, 0.94));
@@ -429,7 +438,8 @@
 }
 
 .sound-toggle {
-  align-self: flex-start;
+  align-self: auto;
+  margin-right: 0;
   border: 1px solid rgba(255, 191, 102, 0.12);
   border-radius: 999px;
   padding: 9px 14px;
@@ -467,6 +477,10 @@
 .sound-toggle:focus-visible {
   outline: 3px solid rgba(255, 191, 102, 0.18);
   outline-offset: 3px;
+}
+
+.panel-start-button {
+  margin: 0;
 }
 
 .score-card {
@@ -588,22 +602,15 @@
 }
 
 .striker-placement-hint {
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(86, 50, 33, 0.08);
-  color: var(--text-secondary);
-  font-size: 0.82rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  text-align: center;
+  display: none;
 }
 
 .power-meter {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px 18px 16px;
+  gap: 7px;
+  padding: 10px 14px 9px;
+  margin-top: -2px;
   border-radius: 24px;
   background:
     linear-gradient(180deg, rgba(255, 246, 239, 0.96), rgba(244, 222, 207, 0.92));
@@ -617,14 +624,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.92rem;
+  font-size: 0.82rem;
   color: #71432b;
   letter-spacing: 0.01em;
 }
 
 .power-meter-label strong {
   color: #9a3f19;
-  padding: 5px 11px;
+  padding: 3px 8px;
   border-radius: 999px;
   background: linear-gradient(180deg, rgba(255, 234, 223, 0.98), rgba(250, 203, 176, 0.92));
   box-shadow:
@@ -634,8 +641,8 @@
 
 .power-meter-track {
   position: relative;
-  height: 24px;
-  padding: 3px;
+  height: 14px;
+  padding: 2px;
   border-radius: 999px;
   overflow: hidden;
   background:
@@ -657,7 +664,7 @@
 .power-meter-track::before {
   content: '';
   position: absolute;
-  inset: 3px;
+  inset: 2px;
   border-radius: inherit;
   background:
     linear-gradient(
@@ -674,7 +681,7 @@
 .power-meter-track::after {
   content: '';
   position: absolute;
-  inset: 3px;
+  inset: 2px;
   border-radius: inherit;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.02) 58%);
@@ -683,8 +690,8 @@
 
 .power-meter-perfect-zone {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
+  top: 2px;
+  bottom: 2px;
   border-radius: 999px;
   background:
     linear-gradient(90deg, rgba(126, 215, 118, 0.48), rgba(48, 163, 91, 0.82));
@@ -695,9 +702,9 @@
 
 .power-meter-fill {
   position: absolute;
-  top: 3px;
-  left: 3px;
-  bottom: 3px;
+  top: 2px;
+  left: 2px;
+  bottom: 2px;
   border-radius: 999px;
   background:
     linear-gradient(90deg, #ffd29e 0%, #ffab61 26%, #f56d3f 58%, #d4412f 100%);
@@ -712,15 +719,15 @@
 .power-meter-indicator {
   position: absolute;
   top: 50%;
-  width: 26px;
-  height: 26px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background:
     radial-gradient(circle at 35% 35%, #f7feff, #dbf4ff 56%, #7ebfe1 100%);
   border: 2px solid #2b6996;
   box-shadow:
-    0 0 0 5px rgba(234, 248, 255, 0.38),
-    0 12px 24px rgba(26, 74, 108, 0.24);
+    0 0 0 3px rgba(234, 248, 255, 0.28),
+    0 6px 14px rgba(26, 74, 108, 0.18);
   transform: translateY(-50%);
   transition:
     left 90ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -732,7 +739,7 @@
 .power-meter-indicator::before {
   content: '';
   position: absolute;
-  inset: 5px;
+  inset: 2px;
   border-radius: 50%;
   background: radial-gradient(circle at 30% 30%, #fffdf8, rgba(255, 255, 255, 0.06));
 }
@@ -741,9 +748,9 @@
   content: '';
   position: absolute;
   left: 50%;
-  bottom: -9px;
-  width: 8px;
-  height: 8px;
+  bottom: -5px;
+  width: 5px;
+  height: 5px;
   background: #2b6996;
   transform: translateX(-50%) rotate(45deg);
   border-radius: 2px;
@@ -754,17 +761,17 @@
   background: #f3ffe8;
   transform: translateY(-50%) scale(1.08);
   box-shadow:
-    0 0 0 4px rgba(156, 234, 138, 0.32),
-    0 0 24px rgba(111, 198, 94, 0.58),
-    0 10px 18px rgba(78, 43, 11, 0.22);
+    0 0 0 2px rgba(156, 234, 138, 0.28),
+    0 0 14px rgba(111, 198, 94, 0.46),
+    0 6px 10px rgba(78, 43, 11, 0.16);
 }
 
 .power-meter-scale {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   align-items: center;
-  gap: 8px;
-  font-size: 0.68rem;
+  gap: 4px;
+  font-size: 0.56rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -772,7 +779,7 @@
 }
 
 .power-meter-scale span {
-  padding-top: 2px;
+  padding-top: 0;
 }
 
 .power-meter-scale span:nth-child(1) {
