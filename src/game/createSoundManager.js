@@ -81,6 +81,7 @@ export default function createSoundManager() {
   let audioContext = null;
   let masterGain = null;
   let muted = false;
+  let unlockPromise = null;
   const cooldowns = {
     strikerHit: 70,
     coinCollision: 90,
@@ -113,6 +114,30 @@ export default function createSoundManager() {
     }
 
     return audioContext;
+  };
+
+  const unlock = () => {
+    const context = ensureAudio();
+
+    if (!context) {
+      return Promise.resolve(false);
+    }
+
+    if (context.state === 'running') {
+      return Promise.resolve(true);
+    }
+
+    if (!unlockPromise) {
+      unlockPromise = context
+        .resume()
+        .then(() => true)
+        .catch(() => false)
+        .finally(() => {
+          unlockPromise = null;
+        });
+    }
+
+    return unlockPromise;
   };
 
   const canPlay = (name) => {
@@ -268,6 +293,7 @@ export default function createSoundManager() {
 
   return {
     getMuted: () => muted,
+    unlock,
     toggleMuted: () => {
       muted = !muted;
       return muted;

@@ -59,6 +59,10 @@ function GameBoard() {
     bonus: 0,
     visible: false,
   });
+  const [coinPocketState, setCoinPocketState] = useState({
+    visible: false,
+    label: '',
+  });
   const canvasRef = useRef(null);
   const hasLoggedDebugRef = useRef(false);
   const activePlayerRef = useRef(1);
@@ -66,6 +70,7 @@ function GameBoard() {
   const shotPowerRef = useRef(0);
   const perfectShotTimeoutRef = useRef(0);
   const comboTimeoutRef = useRef(0);
+  const coinPocketTimeoutRef = useRef(0);
   const turnFlashTimeoutRef = useRef(0);
   const soundManagerRef = useRef(null);
   const hasMountedTurnRef = useRef(false);
@@ -141,6 +146,24 @@ function GameBoard() {
     }, 1100);
   };
 
+  const resetCoinPocketFeedback = () => {
+    setCoinPocketState({
+      visible: false,
+      label: '',
+    });
+  };
+
+  const showCoinPocketFeedback = (points) => {
+    setCoinPocketState({
+      visible: true,
+      label: `+${points}`,
+    });
+    window.clearTimeout(coinPocketTimeoutRef.current);
+    coinPocketTimeoutRef.current = window.setTimeout(() => {
+      resetCoinPocketFeedback();
+    }, 850);
+  };
+
   const resetGame = () => {
     boardStateRef.current = createInitialBoardState({
       coinPositions: COIN_POSITIONS,
@@ -162,8 +185,10 @@ function GameBoard() {
     resetPowerMeter();
     setPerfectShotActive(false);
     resetComboFeedback();
+    resetCoinPocketFeedback();
     window.clearTimeout(perfectShotTimeoutRef.current);
     window.clearTimeout(comboTimeoutRef.current);
+    window.clearTimeout(coinPocketTimeoutRef.current);
     window.clearTimeout(turnFlashTimeoutRef.current);
     setTurnFlashVisible(false);
     pendingQueenCoverRef.current = null;
@@ -279,6 +304,8 @@ function GameBoard() {
     let animationFrameId = 0;
 
     const handlePointerDown = (event) => {
+      soundManagerRef.current?.unlock();
+
       const boardState = boardStateRef.current;
 
       if (gameOverRef.current || isAnyPieceMoving(boardState, MIN_VELOCITY)) {
@@ -573,6 +600,7 @@ function GameBoard() {
           const comboCount = shotSummary.coinsPocketed;
           const comboBonus = comboCount > 1 ? comboCount - 1 : 0;
           const shotScore = getShotScore(shotSummary.pocketedCoinTypes);
+          const earnedPoints = shotScore + queenBonus + comboBonus;
 
           resetStriker(
             boardStateRef.current,
@@ -609,6 +637,12 @@ function GameBoard() {
             resetComboFeedback();
           }
 
+          if (earnedPoints > 0) {
+            showCoinPocketFeedback(earnedPoints);
+          } else {
+            resetCoinPocketFeedback();
+          }
+
           if (queenCount > 0) {
             pendingQueenCoverRef.current = {
               player: activePlayerRef.current,
@@ -616,6 +650,7 @@ function GameBoard() {
           }
         } else if (boardStateRef.current.coins.length === 0) {
           resetComboFeedback();
+          resetCoinPocketFeedback();
           resetStriker(
             boardStateRef.current,
             getPlayerStrikerPosition(activePlayerRef.current),
@@ -642,6 +677,7 @@ function GameBoard() {
           }
         } else {
           resetComboFeedback();
+          resetCoinPocketFeedback();
 
           if (queenBonus > 0) {
             const playerKey =
@@ -715,6 +751,7 @@ function GameBoard() {
     return () => {
       window.clearTimeout(perfectShotTimeoutRef.current);
       window.clearTimeout(comboTimeoutRef.current);
+      window.clearTimeout(coinPocketTimeoutRef.current);
       window.clearTimeout(turnFlashTimeoutRef.current);
       canvas.removeEventListener('pointerdown', handlePointerDown);
       canvas.removeEventListener('pointermove', handlePointerMove);
@@ -725,6 +762,7 @@ function GameBoard() {
   }, []);
 
   const handleSoundToggle = () => {
+    soundManagerRef.current?.unlock();
     const nextMuted = soundManagerRef.current?.toggleMuted() ?? false;
     setIsSoundMuted(nextMuted);
   };
@@ -750,6 +788,12 @@ function GameBoard() {
           >
             Combo x{comboState.count}
             {comboState.bonus > 0 ? `  +${comboState.bonus}` : ''}
+          </div>
+          <div
+            className={`board-coin-pocket-banner ${coinPocketState.visible ? 'board-coin-pocket-banner-visible' : ''}`}
+            aria-hidden={!coinPocketState.visible}
+          >
+            {coinPocketState.label}
           </div>
           {gameOver ? (
             <div className="board-game-over-overlay" role="dialog" aria-modal="true">
