@@ -1,4 +1,4 @@
-import { BOARD_CORNERS } from '../utils/constants';
+import { BOARD_CORNERS, BOARD_PLAYFIELD_INSET } from '../utils/constants';
 import {
   getCoinRadius,
   getPocketRadius,
@@ -175,7 +175,8 @@ function drawCornerArrows(ctx, size) {
 
 function drawPockets(ctx, size) {
   const pocketRadius = getPocketRadius(size);
-  const pocketOffset = percentToCanvas(size, 9.4);
+  const playfieldInset = percentToCanvas(size, BOARD_PLAYFIELD_INSET);
+  const pocketOffset = playfieldInset + pocketRadius * 0.98;
   const positions = {
     'top-left': [pocketOffset, pocketOffset],
     'top-right': [size - pocketOffset, pocketOffset],
@@ -185,15 +186,75 @@ function drawPockets(ctx, size) {
 
   BOARD_CORNERS.forEach((corner) => {
     const [x, y] = positions[corner];
-    drawCircle(ctx, x, y, pocketRadius, '#1b1008');
+    const outerRadius = pocketRadius * 1.08;
+    const innerRadius = pocketRadius * 0.88;
+
+    const glowGradient = ctx.createRadialGradient(
+      x,
+      y,
+      innerRadius * 0.4,
+      x,
+      y,
+      outerRadius * 1.45
+    );
+    glowGradient.addColorStop(0, 'rgba(255, 228, 186, 0.04)');
+    glowGradient.addColorStop(0.7, 'rgba(94, 54, 20, 0.12)');
+    glowGradient.addColorStop(1, 'rgba(94, 54, 20, 0)');
+
+    const collarGradient = ctx.createRadialGradient(
+      x - outerRadius * 0.16,
+      y - outerRadius * 0.16,
+      outerRadius * 0.12,
+      x,
+      y,
+      outerRadius
+    );
+    collarGradient.addColorStop(0, '#8b5825');
+    collarGradient.addColorStop(0.6, '#5a3213');
+    collarGradient.addColorStop(1, '#301707');
+
+    const pocketGradient = ctx.createRadialGradient(
+      x - innerRadius * 0.12,
+      y - innerRadius * 0.14,
+      innerRadius * 0.08,
+      x,
+      y,
+      innerRadius
+    );
+    pocketGradient.addColorStop(0, '#2a160d');
+    pocketGradient.addColorStop(0.38, '#120905');
+    pocketGradient.addColorStop(1, '#040302');
+
+    drawCircle(ctx, x, y, outerRadius * 1.22, glowGradient);
+    drawCircle(ctx, x, y, outerRadius, collarGradient);
+    drawCircle(ctx, x, y, innerRadius, pocketGradient);
     drawRing(
       ctx,
       x,
       y,
-      pocketRadius + percentToCanvas(size, 0.8),
-      percentToCanvas(size, 1),
-      'rgba(122, 66, 27, 0.28)'
+      outerRadius,
+      Math.max(1.05, percentToCanvas(size, 0.26)),
+      'rgba(255, 229, 193, 0.16)'
     );
+    drawRing(
+      ctx,
+      x,
+      y,
+      innerRadius * 0.96,
+      Math.max(0.95, percentToCanvas(size, 0.18)),
+      'rgba(255, 246, 224, 0.08)'
+    );
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    drawCircle(
+      ctx,
+      x - innerRadius * 0.22,
+      y - innerRadius * 0.24,
+      innerRadius * 0.16,
+      'rgba(255, 235, 206, 0.08)'
+    );
+    ctx.restore();
   });
 }
 
@@ -246,10 +307,20 @@ function drawCoin(ctx, size, coin) {
   drawRing(ctx, x, y, radius * 0.66, Math.max(1, radius * 0.12), palette.ring);
 }
 
-function drawStriker(ctx, size, striker, isDimmed = false) {
+function drawStriker(ctx, size, striker, isDimmed = false, isPerfectShotActive = false) {
   const x = percentToCanvas(size, striker.x);
   const y = percentToCanvas(size, striker.y);
   const radius = getStrikerRadius(size);
+
+  if (isPerfectShotActive) {
+    ctx.save();
+    ctx.shadowColor = 'rgba(102, 217, 120, 0.75)';
+    ctx.shadowBlur = radius * 1.5;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    drawCircle(ctx, x, y, radius * 0.98, 'rgba(176, 255, 186, 0.3)');
+    ctx.restore();
+  }
 
   const gradient = ctx.createRadialGradient(
     x - radius * 0.35,
@@ -270,9 +341,19 @@ function drawStriker(ctx, size, striker, isDimmed = false) {
     y,
     radius * 0.7,
     Math.max(1.5, radius * 0.14),
-    isDimmed ? 'rgba(108, 89, 66, 0.72)' : 'rgba(153, 69, 45, 0.62)'
+    isDimmed
+      ? 'rgba(108, 89, 66, 0.72)'
+      : isPerfectShotActive
+        ? 'rgba(71, 163, 84, 0.9)'
+        : 'rgba(153, 69, 45, 0.62)'
   );
-  drawCircle(ctx, x, y, radius * 0.28, isDimmed ? '#6e6354' : '#9b3728');
+  drawCircle(
+    ctx,
+    x,
+    y,
+    radius * 0.28,
+    isDimmed ? '#6e6354' : isPerfectShotActive ? '#4fae58' : '#9b3728'
+  );
 }
 
 function drawAimGuide(ctx, size, aimState, striker) {
@@ -282,39 +363,72 @@ function drawAimGuide(ctx, size, aimState, striker) {
 
   const strikerX = percentToCanvas(size, striker.x);
   const strikerY = percentToCanvas(size, striker.y);
-  const guideEndX = aimState.pointerX;
-  const guideEndY = aimState.pointerY;
+  const pullEndX = aimState.pointerX;
+  const pullEndY = aimState.pointerY;
+  const aimVectorX = strikerX - pullEndX;
+  const aimVectorY = strikerY - pullEndY;
+  const aimLength = Math.hypot(aimVectorX, aimVectorY);
+
+  if (aimLength < 1) {
+    return;
+  }
+
+  const normalizedAimX = aimVectorX / aimLength;
+  const normalizedAimY = aimVectorY / aimLength;
+  const arrowStartOffset = getStrikerRadius(size) * 1.2;
+  const arrowLength = Math.min(size * 0.22, Math.max(size * 0.12, aimLength * 0.9));
+  const guideEndX = strikerX + normalizedAimX * (arrowStartOffset + arrowLength);
+  const guideEndY = strikerY + normalizedAimY * (arrowStartOffset + arrowLength);
+  const arrowStartX = strikerX + normalizedAimX * arrowStartOffset;
+  const arrowStartY = strikerY + normalizedAimY * arrowStartOffset;
   const guideGradient = ctx.createLinearGradient(
-    strikerX,
-    strikerY,
+    arrowStartX,
+    arrowStartY,
     guideEndX,
     guideEndY
   );
-  guideGradient.addColorStop(0, 'rgba(255, 248, 234, 0.9)');
-  guideGradient.addColorStop(1, 'rgba(155, 55, 40, 0.92)');
+  guideGradient.addColorStop(0, 'rgba(255, 248, 234, 0.78)');
+  guideGradient.addColorStop(1, 'rgba(155, 55, 40, 0.96)');
 
   ctx.save();
-  ctx.setLineDash([12, 9]);
   ctx.strokeStyle = guideGradient;
   ctx.lineCap = 'round';
-  ctx.lineWidth = Math.max(2, size * 0.0065);
+  ctx.lineWidth = Math.max(2.5, size * 0.007);
   ctx.beginPath();
-  ctx.moveTo(strikerX, strikerY);
+  ctx.moveTo(arrowStartX, arrowStartY);
   ctx.lineTo(guideEndX, guideEndY);
   ctx.stroke();
+
+  const arrowHeadLength = Math.max(12, size * 0.03);
+  const arrowHeadAngle = Math.PI / 7;
+  const arrowAngle = Math.atan2(normalizedAimY, normalizedAimX);
+
+  ctx.fillStyle = 'rgba(155, 55, 40, 0.96)';
+  ctx.beginPath();
+  ctx.moveTo(guideEndX, guideEndY);
+  ctx.lineTo(
+    guideEndX - Math.cos(arrowAngle - arrowHeadAngle) * arrowHeadLength,
+    guideEndY - Math.sin(arrowAngle - arrowHeadAngle) * arrowHeadLength
+  );
+  ctx.lineTo(
+    guideEndX - Math.cos(arrowAngle + arrowHeadAngle) * arrowHeadLength,
+    guideEndY - Math.sin(arrowAngle + arrowHeadAngle) * arrowHeadLength
+  );
+  ctx.closePath();
+  ctx.fill();
   ctx.restore();
 
   drawCircle(
     ctx,
-    guideEndX,
-    guideEndY,
+    pullEndX,
+    pullEndY,
     Math.max(5, size * 0.013),
-    'rgba(155, 55, 40, 0.2)'
+    'rgba(155, 55, 40, 0.18)'
   );
   drawRing(
     ctx,
-    guideEndX,
-    guideEndY,
+    pullEndX,
+    pullEndY,
     Math.max(9, size * 0.024),
     Math.max(1.5, size * 0.004),
     'rgba(255, 248, 234, 0.78)'
@@ -332,7 +446,13 @@ export function drawBoardScene(ctx, size, boardState, aimState, renderState = {}
   });
 
   if (!boardState.striker.isPocketed) {
-    drawStriker(ctx, size, boardState.striker, renderState.dimStriker);
+    drawStriker(
+      ctx,
+      size,
+      boardState.striker,
+      renderState.dimStriker,
+      renderState.perfectShotActive
+    );
     drawAimGuide(ctx, size, aimState, boardState.striker);
   }
 }

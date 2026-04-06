@@ -4,6 +4,7 @@ export const APP_SUBTITLE =
   'A clean React + Vite structure ready for future carrom gameplay.';
 
 export const BOARD_CORNERS = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
+export const BOARD_PLAYFIELD_INSET = 3.3;
 
 export const STRIKER_SHOOTING_RANGE = {
   minX: 23,
@@ -21,14 +22,29 @@ export const PLAYER_STRIKER_POSITIONS = {
   },
 };
 
-export const STRIKER_SHOT_POWER = 0.13;
-export const FRICTION_PER_FRAME = 0.985;
+export const QUEEN_HOME_POSITION = {
+  x: 50,
+  y: 50,
+};
+
+export const STRIKER_SHOT_POWER = 0.42;
+export const FRICTION_PER_FRAME = 0.978;
 export const MIN_VELOCITY = 0.02;
-export const WALL_BOUNCE_DAMPING = 0.92;
-export const COLLISION_BOUNCE_DAMPING = 0.96;
+export const WALL_BOUNCE_DAMPING = 0.84;
+export const COLLISION_BOUNCE_DAMPING = 0.88;
+export const COLLISION_TANGENTIAL_DAMPING = 0.94;
 export const MIN_SHOT_DRAG = 1.4;
 export const MAX_SHOT_DRAG = 14;
 export const STRIKER_INTERACTION_THRESHOLD = 1.5;
+export const POWER_METER_CYCLE_MS = 1500;
+export const STRIKER_PLACEMENT_BUFFER = 0.6;
+export const STRIKER_SPAWN_PROTECTION_FRAMES = 2;
+export const WINNING_SCORE = 16;
+export const PERFECT_SHOT_RANGE = {
+  min: 0.45,
+  max: 0.55,
+};
+export const PERFECT_SHOT_BOOST = 1.12;
 
 export const COIN_POSITIONS = [
   { id: 'queen', x: 50, y: 50, type: 'queen' },

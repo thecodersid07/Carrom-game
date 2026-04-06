@@ -1,3 +1,5 @@
+import { BOARD_PLAYFIELD_INSET } from '../utils/constants';
+
 export function percentToCanvas(size, value) {
   return (size * value) / 100;
 }
@@ -26,6 +28,14 @@ export function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function getCoinRadiusPercent(type) {
+  return type === 'queen' ? 2.95 : 2.675;
+}
+
+function getStrikerRadiusPercent() {
+  return 3.7;
+}
+
 function getPocketCenters() {
   const pocketOffset = 9.4;
 
@@ -37,8 +47,14 @@ function getPocketCenters() {
   ];
 }
 
-export function createInitialBoardState({ coinPositions, strikerPosition }) {
-  return {
+export function createInitialBoardState({
+  coinPositions,
+  strikerPosition,
+  shootingRange,
+  placementBuffer = 0,
+  spawnProtectionFrames = 0,
+}) {
+  const boardState = {
     coins: coinPositions.map((coin) => ({
       ...coin,
       vx: 0,
@@ -54,8 +70,159 @@ export function createInitialBoardState({ coinPositions, strikerPosition }) {
     pendingStrikerReset: false,
     shotInProgress: false,
     coinsPocketedThisTurn: 0,
+    pocketedCoinTypesThisTurn: [],
     strikerPocketedThisTurn: false,
+    strikerSpawnProtectionFrames: 0,
+    strikerPlacementConfig: {
+      shootingRange,
+      placementBuffer,
+      spawnProtectionFrames,
+    },
   };
+
+  placeStrikerSafely(
+    boardState,
+    strikerPosition,
+    shootingRange,
+    placementBuffer,
+    spawnProtectionFrames
+  );
+
+  return boardState;
+}
+
+function canPlaceStrikerAt(boardState, candidateX, candidateY, bufferDistance) {
+  const strikerRadius = getStrikerRadiusPercent();
+
+  return !boardState.coins.some((coin) => {
+    const minDistance =
+      strikerRadius + getCoinRadiusPercent(coin.type) + bufferDistance;
+    const distance = Math.hypot(candidateX - coin.x, candidateY - coin.y);
+
+    return distance < minDistance;
+  });
+}
+
+export function findSafeStrikerPlacement(
+  boardState,
+  strikerPosition,
+  shootingRange,
+  placementBuffer = 0
+) {
+  const baselineY = strikerPosition.y;
+  const minX = shootingRange?.minX ?? getStrikerRadiusPercent();
+  const maxX = shootingRange?.maxX ?? 100 - getStrikerRadiusPercent();
+  const preferredX = clamp(strikerPosition.x, minX, maxX);
+
+  if (canPlaceStrikerAt(boardState, preferredX, baselineY, placementBuffer)) {
+    return {
+      x: preferredX,
+      y: baselineY,
+    };
+  }
+
+  const stepSize = 0.4;
+  const maxOffset = Math.max(preferredX - minX, maxX - preferredX);
+
+  for (let offset = stepSize; offset <= maxOffset + stepSize; offset += stepSize) {
+    const leftX = clamp(preferredX - offset, minX, maxX);
+
+    if (canPlaceStrikerAt(boardState, leftX, baselineY, placementBuffer)) {
+      return {
+        x: leftX,
+        y: baselineY,
+      };
+    }
+
+    const rightX = clamp(preferredX + offset, minX, maxX);
+
+    if (canPlaceStrikerAt(boardState, rightX, baselineY, placementBuffer)) {
+      return {
+        x: rightX,
+        y: baselineY,
+      };
+    }
+  }
+
+  return {
+    x: preferredX,
+    y: baselineY,
+  };
+}
+
+function isCoinPlacementClear(boardState, candidateX, candidateY, coinType) {
+  const candidateRadius = getCoinRadiusPercent(coinType);
+
+  const overlapsCoin = boardState.coins.some((coin) => {
+    const minDistance = candidateRadius + getCoinRadiusPercent(coin.type);
+    const distance = Math.hypot(candidateX - coin.x, candidateY - coin.y);
+
+    return distance < minDistance;
+  });
+
+  if (overlapsCoin) {
+    return false;
+  }
+
+  if (!boardState.striker.isPocketed) {
+    const strikerDistance = Math.hypot(
+      candidateX - boardState.striker.x,
+      candidateY - boardState.striker.y
+    );
+    const minStrikerDistance = candidateRadius + getStrikerRadiusPercent();
+
+    if (strikerDistance < minStrikerDistance) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function respotCoin(
+  boardState,
+  coin,
+  preferredPosition
+) {
+  const maxRadius = 18;
+  const step = 1.2;
+
+  if (isCoinPlacementClear(boardState, preferredPosition.x, preferredPosition.y, coin.type)) {
+    boardState.coins.push({
+      ...coin,
+      x: preferredPosition.x,
+      y: preferredPosition.y,
+      vx: 0,
+      vy: 0,
+    });
+    return;
+  }
+
+  for (let radius = step; radius <= maxRadius; radius += step) {
+    for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 6) {
+      const candidateX = clamp(preferredPosition.x + Math.cos(angle) * radius, 0, 100);
+      const candidateY = clamp(preferredPosition.y + Math.sin(angle) * radius, 0, 100);
+
+      if (isCoinPlacementClear(boardState, candidateX, candidateY, coin.type)) {
+        boardState.coins.push({
+          ...coin,
+          x: candidateX,
+          y: candidateY,
+          vx: 0,
+          vy: 0,
+        });
+        return;
+      }
+    }
+  }
+
+  boardState.coins.push({
+    ...coin,
+    x: preferredPosition.x,
+    y: preferredPosition.y,
+    vx: 0,
+    vy: 0,
+  });
 }
 
 function stopSmallVelocity(piece, minVelocity) {
@@ -69,10 +236,10 @@ function stopSmallVelocity(piece, minVelocity) {
 }
 
 function keepPieceInsideBounds(piece, radiusPercent) {
-  const minX = radiusPercent;
-  const maxX = 100 - radiusPercent;
-  const minY = radiusPercent;
-  const maxY = 100 - radiusPercent;
+  const minX = BOARD_PLAYFIELD_INSET + radiusPercent;
+  const maxX = 100 - BOARD_PLAYFIELD_INSET - radiusPercent;
+  const minY = BOARD_PLAYFIELD_INSET + radiusPercent;
+  const maxY = 100 - BOARD_PLAYFIELD_INSET - radiusPercent;
 
   piece.x = clamp(piece.x, minX, maxX);
   piece.y = clamp(piece.y, minY, maxY);
@@ -80,10 +247,10 @@ function keepPieceInsideBounds(piece, radiusPercent) {
 
 function updatePieceWithWalls(piece, radiusPercent, physics) {
   const { frictionPerFrame, minVelocity, wallBounceDamping } = physics;
-  const minX = radiusPercent;
-  const maxX = 100 - radiusPercent;
-  const minY = radiusPercent;
-  const maxY = 100 - radiusPercent;
+  const minX = BOARD_PLAYFIELD_INSET + radiusPercent;
+  const maxX = 100 - BOARD_PLAYFIELD_INSET - radiusPercent;
+  const minY = BOARD_PLAYFIELD_INSET + radiusPercent;
+  const maxY = 100 - BOARD_PLAYFIELD_INSET - radiusPercent;
 
   piece.x += piece.vx;
   piece.y += piece.vy;
@@ -109,26 +276,28 @@ function updatePieceWithWalls(piece, radiusPercent, physics) {
   stopSmallVelocity(piece, minVelocity);
 }
 
-function resolvePieceCollision(firstPiece, secondPiece, physics) {
+function resolvePieceCollision(firstPiece, secondPiece, physics, audioEvents) {
   const dx = secondPiece.x - firstPiece.x;
   const dy = secondPiece.y - firstPiece.y;
   const distance = Math.hypot(dx, dy);
   const minDistance = firstPiece.radius + secondPiece.radius;
+  const overlap = minDistance - distance;
 
-  if (distance >= minDistance) {
+  if (overlap <= 0) {
     return;
   }
 
   const normalX = distance === 0 ? 1 : dx / distance;
   const normalY = distance === 0 ? 0 : dy / distance;
-  const overlap = minDistance - distance;
+  const slop = 0.02;
+  const correction = Math.max(overlap - slop, 0);
   const separationX = normalX * (overlap / 2);
   const separationY = normalY * (overlap / 2);
 
-  firstPiece.x -= separationX;
-  firstPiece.y -= separationY;
-  secondPiece.x += separationX;
-  secondPiece.y += separationY;
+  firstPiece.x -= correction > 0 ? normalX * (correction / 2) : separationX;
+  firstPiece.y -= correction > 0 ? normalY * (correction / 2) : separationY;
+  secondPiece.x += correction > 0 ? normalX * (correction / 2) : separationX;
+  secondPiece.y += correction > 0 ? normalY * (correction / 2) : separationY;
 
   keepPieceInsideBounds(firstPiece, firstPiece.radius);
   keepPieceInsideBounds(secondPiece, secondPiece.radius);
@@ -142,21 +311,59 @@ function resolvePieceCollision(firstPiece, secondPiece, physics) {
     return;
   }
 
-  const impulse =
-    (-(1 + physics.collisionBounceDamping) * velocityAlongNormal) / 2;
-  const impulseX = impulse * normalX;
-  const impulseY = impulse * normalY;
+  const collisionStrength = Math.abs(velocityAlongNormal);
+  const tangentX = -normalY;
+  const tangentY = normalX;
+  const firstNormalVelocity =
+    firstPiece.vx * normalX + firstPiece.vy * normalY;
+  const secondNormalVelocity =
+    secondPiece.vx * normalX + secondPiece.vy * normalY;
+  const firstTangentVelocity =
+    firstPiece.vx * tangentX + firstPiece.vy * tangentY;
+  const secondTangentVelocity =
+    secondPiece.vx * tangentX + secondPiece.vy * tangentY;
+  const restitution = physics.collisionBounceDamping;
+  const tangentDamping = physics.collisionTangentialDamping ?? 1;
+  const nextFirstNormalVelocity =
+    ((1 - restitution) * firstNormalVelocity +
+      (1 + restitution) * secondNormalVelocity) /
+    2;
+  const nextSecondNormalVelocity =
+    ((1 + restitution) * firstNormalVelocity +
+      (1 - restitution) * secondNormalVelocity) /
+    2;
 
-  firstPiece.vx -= impulseX;
-  firstPiece.vy -= impulseY;
-  secondPiece.vx += impulseX;
-  secondPiece.vy += impulseY;
+  firstPiece.vx =
+    nextFirstNormalVelocity * normalX +
+    firstTangentVelocity * tangentX * tangentDamping;
+  firstPiece.vy =
+    nextFirstNormalVelocity * normalY +
+    firstTangentVelocity * tangentY * tangentDamping;
+  secondPiece.vx =
+    nextSecondNormalVelocity * normalX +
+    secondTangentVelocity * tangentX * tangentDamping;
+  secondPiece.vy =
+    nextSecondNormalVelocity * normalY +
+    secondTangentVelocity * tangentY * tangentDamping;
+
+  if (audioEvents) {
+    audioEvents.push({
+      type:
+        firstPiece.key === 'striker' || secondPiece.key === 'striker'
+          ? 'striker-hit'
+          : 'coin-collision',
+      intensity: collisionStrength,
+    });
+  }
 }
 
 function getBoardPieces(boardState, boardSize) {
   const pieces = [];
 
-  if (!boardState.striker.isPocketed) {
+  if (
+    !boardState.striker.isPocketed &&
+    boardState.strikerSpawnProtectionFrames <= 0
+  ) {
     const strikerRadius = canvasToPercent(boardSize, getStrikerRadius(boardSize));
     pieces.push({
       ...boardState.striker,
@@ -194,9 +401,10 @@ function isPieceInPocket(piece, pocketRadiusPercent) {
   });
 }
 
-function handlePocketedPieces(boardState, boardSize) {
+function handlePocketedPieces(boardState, boardSize, audioEvents) {
   const pocketRadiusPercent = canvasToPercent(boardSize, getPocketRadius(boardSize));
   let pocketedCoinCount = 0;
+  const pocketedCoinTypes = [];
 
   boardState.coins = boardState.coins.filter((coin) => {
     const coinRadius = canvasToPercent(boardSize, getCoinRadius(boardSize, coin.type));
@@ -207,12 +415,21 @@ function handlePocketedPieces(boardState, boardSize) {
 
     if (isPocketed) {
       pocketedCoinCount += 1;
+      pocketedCoinTypes.push(coin.type);
     }
 
     return !isPocketed;
   });
 
   boardState.coinsPocketedThisTurn += pocketedCoinCount;
+  boardState.pocketedCoinTypesThisTurn.push(...pocketedCoinTypes);
+
+  if (pocketedCoinCount > 0 && audioEvents) {
+    audioEvents.push({
+      type: 'coin-pocketed',
+      count: pocketedCoinCount,
+    });
+  }
 
   if (!boardState.striker.isPocketed) {
     const strikerRadius = canvasToPercent(boardSize, getStrikerRadius(boardSize));
@@ -235,12 +452,13 @@ function handlePocketedPieces(boardState, boardSize) {
   );
 
   if (boardState.pendingStrikerReset && !coinsMoving) {
-    boardState.striker.x = boardState.strikerHomePosition.x;
-    boardState.striker.y = boardState.strikerHomePosition.y;
-    boardState.striker.vx = 0;
-    boardState.striker.vy = 0;
-    boardState.striker.isPocketed = false;
-    boardState.pendingStrikerReset = false;
+    placeStrikerSafely(
+      boardState,
+      boardState.strikerHomePosition,
+      boardState.strikerPlacementConfig?.shootingRange,
+      boardState.strikerPlacementConfig?.placementBuffer,
+      boardState.strikerPlacementConfig?.spawnProtectionFrames
+    );
   }
 }
 
@@ -287,21 +505,26 @@ export function isStrikerOverlappingCoin(boardState, boardSize) {
   });
 }
 
-export function updateBoardState(boardState, boardSize, physics) {
+export function updateBoardState(boardState, boardSize, physics, audioEvents = []) {
   const pieces = getBoardPieces(boardState, boardSize);
 
   pieces.forEach((piece) => {
     updatePieceWithWalls(piece, piece.radius, physics);
   });
 
-  for (let pass = 0; pass < 2; pass += 1) {
+  for (let pass = 0; pass < 3; pass += 1) {
     for (let firstIndex = 0; firstIndex < pieces.length; firstIndex += 1) {
       for (
         let secondIndex = firstIndex + 1;
         secondIndex < pieces.length;
         secondIndex += 1
       ) {
-        resolvePieceCollision(pieces[firstIndex], pieces[secondIndex], physics);
+        resolvePieceCollision(
+          pieces[firstIndex],
+          pieces[secondIndex],
+          physics,
+          audioEvents
+        );
       }
     }
   }
@@ -312,33 +535,75 @@ export function updateBoardState(boardState, boardSize, physics) {
   });
 
   syncPieceState(pieces);
-  handlePocketedPieces(boardState, boardSize);
+  handlePocketedPieces(boardState, boardSize, audioEvents);
+
+  if (boardState.strikerSpawnProtectionFrames > 0) {
+    boardState.strikerSpawnProtectionFrames -= 1;
+  }
 }
 
 export function startShot(boardState) {
   boardState.shotInProgress = true;
   boardState.coinsPocketedThisTurn = 0;
+  boardState.pocketedCoinTypesThisTurn = [];
   boardState.strikerPocketedThisTurn = false;
 }
 
-export function resetStriker(boardState, strikerPosition = { x: 50, y: 82 }) {
-  boardState.strikerHomePosition = { ...strikerPosition };
-  boardState.striker.x = strikerPosition.x;
-  boardState.striker.y = strikerPosition.y;
+export function placeStrikerSafely(
+  boardState,
+  strikerPosition = { x: 50, y: 82 },
+  shootingRange,
+  placementBuffer = 0,
+  spawnProtectionFrames = 0
+) {
+  const safePlacement = findSafeStrikerPlacement(
+    boardState,
+    strikerPosition,
+    shootingRange,
+    placementBuffer
+  );
+
+  boardState.strikerHomePosition = { ...safePlacement };
+  boardState.striker.x = safePlacement.x;
+  boardState.striker.y = safePlacement.y;
   boardState.striker.vx = 0;
   boardState.striker.vy = 0;
   boardState.striker.isPocketed = false;
   boardState.pendingStrikerReset = false;
+  boardState.strikerSpawnProtectionFrames = spawnProtectionFrames;
+  boardState.strikerPlacementConfig = {
+    shootingRange,
+    placementBuffer,
+    spawnProtectionFrames,
+  };
+}
+
+export function resetStriker(
+  boardState,
+  strikerPosition = { x: 50, y: 82 },
+  shootingRange,
+  placementBuffer = 0,
+  spawnProtectionFrames = 0
+) {
+  placeStrikerSafely(
+    boardState,
+    strikerPosition,
+    shootingRange,
+    placementBuffer,
+    spawnProtectionFrames
+  );
 }
 
 export function finishShot(boardState) {
   const shotSummary = {
     coinsPocketed: boardState.coinsPocketedThisTurn,
+    pocketedCoinTypes: [...boardState.pocketedCoinTypesThisTurn],
     strikerPocketed: boardState.strikerPocketedThisTurn,
   };
 
   boardState.shotInProgress = false;
   boardState.coinsPocketedThisTurn = 0;
+  boardState.pocketedCoinTypesThisTurn = [];
   boardState.strikerPocketedThisTurn = false;
 
   return shotSummary;
