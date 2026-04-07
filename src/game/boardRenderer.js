@@ -630,6 +630,7 @@ function drawAimGuide(ctx, size, aimState, striker) {
   const aimVectorX = strikerX - pullEndX;
   const aimVectorY = strikerY - pullEndY;
   const aimLength = Math.hypot(aimVectorX, aimVectorY);
+  const strikerRadius = getStrikerRadius(size);
 
   if (aimLength < 1) {
     return;
@@ -637,12 +638,23 @@ function drawAimGuide(ctx, size, aimState, striker) {
 
   const normalizedAimX = aimVectorX / aimLength;
   const normalizedAimY = aimVectorY / aimLength;
-  const arrowStartOffset = getStrikerRadius(size) * 1.2;
+  const arrowStartOffset = strikerRadius * 1.2;
   const arrowLength = Math.min(size * 0.22, Math.max(size * 0.12, aimLength * 0.9));
   const guideEndX = strikerX + normalizedAimX * (arrowStartOffset + arrowLength);
   const guideEndY = strikerY + normalizedAimY * (arrowStartOffset + arrowLength);
   const arrowStartX = strikerX + normalizedAimX * arrowStartOffset;
   const arrowStartY = strikerY + normalizedAimY * arrowStartOffset;
+  const pullLineStartX = strikerX - normalizedAimX * (strikerRadius * 0.9);
+  const pullLineStartY = strikerY - normalizedAimY * (strikerRadius * 0.9);
+  const pullGradient = ctx.createLinearGradient(
+    pullLineStartX,
+    pullLineStartY,
+    pullEndX,
+    pullEndY
+  );
+  pullGradient.addColorStop(0, 'rgba(108, 34, 25, 0.2)');
+  pullGradient.addColorStop(0.45, 'rgba(155, 55, 40, 0.72)');
+  pullGradient.addColorStop(1, 'rgba(255, 247, 234, 0.96)');
   const guideGradient = ctx.createLinearGradient(
     arrowStartX,
     arrowStartY,
@@ -653,6 +665,23 @@ function drawAimGuide(ctx, size, aimState, striker) {
   guideGradient.addColorStop(1, 'rgba(155, 55, 40, 0.96)');
 
   ctx.save();
+  ctx.strokeStyle = pullGradient;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(2.25, size * 0.006);
+  ctx.beginPath();
+  ctx.moveTo(pullLineStartX, pullLineStartY);
+  ctx.lineTo(pullEndX, pullEndY);
+  ctx.stroke();
+
+  ctx.setLineDash([Math.max(7, size * 0.018), Math.max(5, size * 0.013)]);
+  ctx.strokeStyle = 'rgba(255, 248, 234, 0.5)';
+  ctx.lineWidth = Math.max(1.1, size * 0.0028);
+  ctx.beginPath();
+  ctx.moveTo(pullLineStartX, pullLineStartY);
+  ctx.lineTo(pullEndX, pullEndY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
   ctx.strokeStyle = guideGradient;
   ctx.lineCap = 'round';
   ctx.lineWidth = Math.max(2.5, size * 0.007);
@@ -708,6 +737,7 @@ export function drawBoardScene(ctx, size, boardState, aimState, renderState = {}
   });
 
   if (!boardState.striker.isPocketed) {
+    drawAimGuide(ctx, size, aimState, boardState.striker);
     drawStriker(
       ctx,
       size,
@@ -715,6 +745,5 @@ export function drawBoardScene(ctx, size, boardState, aimState, renderState = {}
       renderState.dimStriker,
       renderState.perfectShotActive
     );
-    drawAimGuide(ctx, size, aimState, boardState.striker);
   }
 }
