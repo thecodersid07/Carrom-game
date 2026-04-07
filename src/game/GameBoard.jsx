@@ -17,6 +17,8 @@ import {
   STRIKER_PLACEMENT_BUFFER,
   STRIKER_SPAWN_PROTECTION_FRAMES,
   STRIKER_SHOOTING_RANGE,
+  STRIKER_GLANCING_TANGENT_BOOST,
+  STRIKER_GLANCING_TRANSFER_BOOST,
   STRIKER_SHOT_POWER,
   STRIKER_HIT_TRANSFER_BOOST,
   TURN_TIMER_SECONDS,
@@ -80,6 +82,7 @@ function GameBoard() {
   const turnTimerLastTickRef = useRef(0);
   const turnTimeLeftRef = useRef(TURN_TIMER_SECONDS * 1000);
   const turnTimerExpiredRef = useRef(false);
+  const shotTimerResetAppliedRef = useRef(false);
   const soundManagerRef = useRef(null);
   const hasMountedTurnRef = useRef(false);
   const pendingQueenCoverRef = useRef(null);
@@ -291,6 +294,7 @@ function GameBoard() {
       player1: 0,
       player2: 0,
     });
+    shotTimerResetAppliedRef.current = false;
     setGameStarted(shouldStart);
     setGameOver(false);
     setWinnerMessage('');
@@ -621,6 +625,7 @@ function GameBoard() {
             ? Math.min(1, curvedPower * PERFECT_SHOT_BOOST)
             : curvedPower;
 
+          shotTimerResetAppliedRef.current = false;
           startShot(boardState);
           boardState.striker.vx = baseVelocityX * appliedPower;
           boardState.striker.vy = baseVelocityY * appliedPower;
@@ -706,6 +711,8 @@ function GameBoard() {
             collisionTangentialDamping: COLLISION_TANGENTIAL_DAMPING,
             frictionPerFrame: FRICTION_PER_FRAME,
             minVelocity: MIN_VELOCITY,
+            strikerGlancingTangentBoost: STRIKER_GLANCING_TANGENT_BOOST,
+            strikerGlancingTransferBoost: STRIKER_GLANCING_TRANSFER_BOOST,
             strikerHitTransferBoost: STRIKER_HIT_TRANSFER_BOOST,
             wallBounceDamping: WALL_BOUNCE_DAMPING,
           },
@@ -743,8 +750,19 @@ function GameBoard() {
       const dimStriker =
         !isMovingNow && isStrikerOverlappingCoin(boardStateRef.current, displaySize);
 
+      if (
+        gameStartedRef.current &&
+        boardStateRef.current.shotInProgress &&
+        boardStateRef.current.coinsPocketedThisTurn > 0 &&
+        !shotTimerResetAppliedRef.current
+      ) {
+        shotTimerResetAppliedRef.current = true;
+        resetTurnTimer();
+      }
+
       if (gameStartedRef.current && boardStateRef.current.shotInProgress && !isMovingNow) {
         const shotSummary = finishShot(boardStateRef.current);
+        shotTimerResetAppliedRef.current = false;
         const scorePenalty = shotSummary.strikerPocketed ? 1 : 0;
         const blackCount = shotSummary.pocketedCoinTypes.filter(
           (type) => type === 'black'

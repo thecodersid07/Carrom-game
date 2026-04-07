@@ -82,6 +82,7 @@ export default function createSoundManager() {
   let masterGain = null;
   let muted = false;
   let unlockPromise = null;
+  let audioPrimed = false;
   const cooldowns = {
     strikerHit: 70,
     coinCollision: 90,
@@ -109,11 +110,25 @@ export default function createSoundManager() {
       masterGain.connect(audioContext.destination);
     }
 
-    if (audioContext.state === 'suspended') {
-      audioContext.resume();
+    return audioContext;
+  };
+
+  const primeAudio = (context) => {
+    if (!context || !masterGain || audioPrimed) {
+      return;
     }
 
-    return audioContext;
+    const now = context.currentTime;
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+
+    gainNode.gain.setValueAtTime(0.0001, now);
+    oscillator.frequency.setValueAtTime(440, now);
+    oscillator.connect(gainNode);
+    gainNode.connect(masterGain);
+    oscillator.start(now);
+    oscillator.stop(now + 0.01);
+    audioPrimed = true;
   };
 
   const unlock = () => {
@@ -124,13 +139,21 @@ export default function createSoundManager() {
     }
 
     if (context.state === 'running') {
+      primeAudio(context);
       return Promise.resolve(true);
     }
 
     if (!unlockPromise) {
       unlockPromise = context
         .resume()
-        .then(() => true)
+        .then(() => {
+          if (context.state === 'running') {
+            primeAudio(context);
+            return true;
+          }
+
+          return false;
+        })
         .catch(() => false)
         .finally(() => {
           unlockPromise = null;
@@ -163,7 +186,7 @@ export default function createSoundManager() {
 
     const context = ensureAudio();
 
-    if (!context || !masterGain) {
+    if (!context || !masterGain || context.state !== 'running') {
       return;
     }
 
@@ -190,7 +213,7 @@ export default function createSoundManager() {
 
     const context = ensureAudio();
 
-    if (!context || !masterGain) {
+    if (!context || !masterGain || context.state !== 'running') {
       return;
     }
 
@@ -212,7 +235,7 @@ export default function createSoundManager() {
 
     const context = ensureAudio();
 
-    if (!context || !masterGain) {
+    if (!context || !masterGain || context.state !== 'running') {
       return;
     }
 
@@ -238,7 +261,7 @@ export default function createSoundManager() {
 
     const context = ensureAudio();
 
-    if (!context || !masterGain) {
+    if (!context || !masterGain || context.state !== 'running') {
       return;
     }
 
@@ -268,7 +291,7 @@ export default function createSoundManager() {
 
     const context = ensureAudio();
 
-    if (!context || !masterGain) {
+    if (!context || !masterGain || context.state !== 'running') {
       return;
     }
 
