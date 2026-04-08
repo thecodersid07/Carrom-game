@@ -44,14 +44,21 @@ function drawEllipse(ctx, x, y, radiusX, radiusY, fillStyle) {
   ctx.fill();
 }
 
+function easeInOutCubic(value) {
+  return value < 0.5
+    ? 4 * value * value * value
+    : 1 - Math.pow(-2 * value + 2, 3) / 2;
+}
+
 function drawBoardFrame(ctx, size) {
   const frameRadius = percentToCanvas(size, 5.8);
   const surfaceInset = percentToCanvas(size, 3.3);
 
   const frameGradient = ctx.createLinearGradient(0, 0, size, size);
-  frameGradient.addColorStop(0, '#70411c');
-  frameGradient.addColorStop(0.5, '#8e5827');
-  frameGradient.addColorStop(1, '#5f3415');
+  frameGradient.addColorStop(0, '#4f2d16');
+  frameGradient.addColorStop(0.32, '#7b4a26');
+  frameGradient.addColorStop(0.68, '#9a6434');
+  frameGradient.addColorStop(1, '#5c3317');
 
   ctx.fillStyle = frameGradient;
   createRoundedRectPath(ctx, 0, 0, size, size, frameRadius);
@@ -63,9 +70,10 @@ function drawBoardFrame(ctx, size) {
     size - surfaceInset,
     size - surfaceInset
   );
-  surfaceGradient.addColorStop(0, '#efcf9f');
-  surfaceGradient.addColorStop(0.52, '#ddb37a');
-  surfaceGradient.addColorStop(1, '#d09a5a');
+  surfaceGradient.addColorStop(0, '#e8c79a');
+  surfaceGradient.addColorStop(0.4, '#d5ab74');
+  surfaceGradient.addColorStop(0.72, '#c89458');
+  surfaceGradient.addColorStop(1, '#b97f45');
 
   ctx.fillStyle = surfaceGradient;
   createRoundedRectPath(
@@ -78,7 +86,32 @@ function drawBoardFrame(ctx, size) {
   );
   ctx.fill();
 
-  ctx.strokeStyle = 'rgba(120, 61, 22, 0.45)';
+  const grainCount = 9;
+  for (let index = 0; index < grainCount; index += 1) {
+    const y = surfaceInset + ((size - surfaceInset * 2) / grainCount) * (index + 0.5);
+    const grainGradient = ctx.createLinearGradient(surfaceInset, y, size - surfaceInset, y);
+    grainGradient.addColorStop(0, 'rgba(120, 70, 32, 0)');
+    grainGradient.addColorStop(0.2, 'rgba(120, 70, 32, 0.08)');
+    grainGradient.addColorStop(0.5, 'rgba(255, 236, 205, 0.06)');
+    grainGradient.addColorStop(0.8, 'rgba(120, 70, 32, 0.1)');
+    grainGradient.addColorStop(1, 'rgba(120, 70, 32, 0)');
+
+    ctx.strokeStyle = grainGradient;
+    ctx.lineWidth = percentToCanvas(size, 0.38);
+    ctx.beginPath();
+    ctx.moveTo(surfaceInset + percentToCanvas(size, 1.8), y);
+    ctx.bezierCurveTo(
+      size * 0.32,
+      y - percentToCanvas(size, 0.45),
+      size * 0.68,
+      y + percentToCanvas(size, 0.45),
+      size - surfaceInset - percentToCanvas(size, 1.8),
+      y
+    );
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = 'rgba(84, 46, 19, 0.55)';
   ctx.lineWidth = percentToCanvas(size, 0.55);
   ctx.stroke();
 }
@@ -346,11 +379,24 @@ function getCoinPalette(type) {
   };
 }
 
-function drawCoin(ctx, size, coin) {
-  const x = percentToCanvas(size, coin.x);
-  const y = percentToCanvas(size, coin.y);
-  const radius = getCoinRadius(size, coin.type);
+function drawCoin(ctx, size, coin, renderOptions = {}) {
+  const {
+    opacity = 1,
+    rotation = 0,
+    scale = 1,
+    xPercent = coin.x,
+    yPercent = coin.y,
+  } = renderOptions;
+  const x = percentToCanvas(size, xPercent);
+  const y = percentToCanvas(size, yPercent);
+  const radius = getCoinRadius(size, coin.type) * scale;
   const palette = getCoinPalette(coin.type);
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  ctx.translate(x, y);
+  ctx.rotate(rotation);
+  ctx.translate(-x, -y);
 
   if (palette.glow) {
     ctx.save();
@@ -462,6 +508,43 @@ function drawCoin(ctx, size, coin) {
     palette.specular
   );
   ctx.restore();
+  ctx.restore();
+}
+
+function drawPocketAnimation(ctx, size, animation) {
+  const easedProgress = easeInOutCubic(animation.progress);
+  const pullProgress = Math.pow(easedProgress, 0.82);
+  const xPercent =
+    animation.startX + (animation.pocketX - animation.startX) * pullProgress;
+  const yPercent =
+    animation.startY + (animation.pocketY - animation.startY) * pullProgress;
+  const scale = 1 - easedProgress * 0.7;
+  const opacity = 1 - Math.max(0, easedProgress - 0.18) / 0.82;
+  const sinkShadowScale = 1 + easedProgress * 1.3;
+  const sinkShadowOpacity = (1 - easedProgress) * 0.22;
+  const pocketRadius = getPocketRadius(size);
+  const x = percentToCanvas(size, xPercent);
+  const y = percentToCanvas(size, yPercent);
+
+  ctx.save();
+  ctx.globalAlpha = sinkShadowOpacity;
+  drawEllipse(
+    ctx,
+    x,
+    y,
+    pocketRadius * 0.42 * sinkShadowScale,
+    pocketRadius * 0.2 * sinkShadowScale,
+    'rgba(28, 12, 5, 0.9)'
+  );
+  ctx.restore();
+
+  drawCoin(ctx, size, animation, {
+    opacity,
+    rotation: animation.rotation,
+    scale,
+    xPercent,
+    yPercent,
+  });
 }
 
 function drawStriker(ctx, size, striker, isDimmed = false, isPerfectShotActive = false) {
@@ -734,6 +817,10 @@ export function drawBoardScene(ctx, size, boardState, aimState, renderState = {}
 
   boardState.coins.forEach((coin) => {
     drawCoin(ctx, size, coin);
+  });
+
+  boardState.pocketAnimations?.forEach((animation) => {
+    drawPocketAnimation(ctx, size, animation);
   });
 
   if (!boardState.striker.isPocketed) {

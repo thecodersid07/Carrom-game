@@ -27,9 +27,9 @@ export const QUEEN_HOME_POSITION = {
   y: 50,
 };
 
-export const STRIKER_SHOT_POWER = 0.62;
+export const STRIKER_SHOT_POWER = 0.68;
 export const SHOT_POWER_CURVE_EXPONENT = 0.82;
-export const FRICTION_PER_FRAME = 0.962;
+export const FRICTION_PER_FRAME = 0.968;
 export const MIN_VELOCITY = 0.02;
 export const WALL_BOUNCE_DAMPING = 0.84;
 export const COLLISION_BOUNCE_DAMPING = 0.92;

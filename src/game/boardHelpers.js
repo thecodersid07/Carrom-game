@@ -1,5 +1,9 @@
 import { BOARD_PLAYFIELD_INSET } from '../utils/constants';
 
+const POCKET_RADIUS_PERCENT = 4.85;
+const POCKET_CAPTURE_FORGIVENESS = 0.15;
+const POCKET_ANIMATION_DURATION_FRAMES = 26;
+
 export function percentToCanvas(size, value) {
   return (size * value) / 100;
 }
@@ -17,7 +21,7 @@ export function getStrikerRadius(size) {
 }
 
 export function getPocketRadius(size) {
-  return percentToCanvas(size, 4.4);
+  return percentToCanvas(size, POCKET_RADIUS_PERCENT);
 }
 
 export function isPointInsideCircle(pointX, pointY, circleX, circleY, radius) {
@@ -37,8 +41,7 @@ function getStrikerRadiusPercent() {
 }
 
 function getPocketCenters() {
-  const pocketRadiusPercent = 4.4;
-  const pocketOffset = BOARD_PLAYFIELD_INSET + pocketRadiusPercent * 0.98;
+  const pocketOffset = BOARD_PLAYFIELD_INSET + POCKET_RADIUS_PERCENT * 0.98;
 
   return [
     { x: pocketOffset, y: pocketOffset },
@@ -72,6 +75,7 @@ export function createInitialBoardState({
     shotInProgress: false,
     coinsPocketedThisTurn: 0,
     pocketedCoinTypesThisTurn: [],
+    pocketAnimations: [],
     strikerPocketedThisTurn: false,
     strikerSpawnProtectionFrames: 0,
     strikerPlacementConfig: {
@@ -175,6 +179,22 @@ export function findSafeStrikerPlacement(
   const preferredX = clamp(strikerPosition.x, minX, maxX);
   const stepSize = 0.4;
   const scanDirection = preferredDirection === 0 ? 0 : Math.sign(preferredDirection);
+  const scanForOpenPlacement = (startX, direction) => {
+    for (
+      let candidateX = startX + stepSize * direction;
+      candidateX >= minX && candidateX <= maxX;
+      candidateX += stepSize * direction
+    ) {
+      if (canPlaceStrikerAt(boardState, candidateX, baselineY, placementBuffer)) {
+        return {
+          x: candidateX,
+          y: baselineY,
+        };
+      }
+    }
+
+    return null;
+  };
 
   if (canPlaceStrikerAt(boardState, preferredX, baselineY, placementBuffer)) {
     return {
@@ -198,17 +218,30 @@ export function findSafeStrikerPlacement(
   }
 
   if (scanDirection !== 0) {
-    for (
-      let candidateX = preferredX + stepSize * scanDirection;
-      candidateX >= minX && candidateX <= maxX;
-      candidateX += stepSize * scanDirection
-    ) {
-      if (canPlaceStrikerAt(boardState, candidateX, baselineY, placementBuffer)) {
-        return {
-          x: candidateX,
-          y: baselineY,
-        };
-      }
+    const forwardPlacement = scanForOpenPlacement(preferredX, scanDirection);
+
+    if (forwardPlacement) {
+      return forwardPlacement;
+    }
+
+    const reversePlacement = scanForOpenPlacement(preferredX, -scanDirection);
+
+    if (reversePlacement) {
+      return reversePlacement;
+    }
+
+    const fallbackTouchingPlacement = getClosestTouchingPlacement(
+      boardState,
+      baselineY,
+      minX,
+      maxX,
+      placementBuffer,
+      boardState.striker.x,
+      0
+    );
+
+    if (fallbackTouchingPlacement) {
+      return fallbackTouchingPlacement;
     }
 
     return {
@@ -341,14 +374,19 @@ function keepPieceInsideBounds(piece, radiusPercent) {
 }
 
 function updatePieceWithWalls(piece, radiusPercent, physics) {
-  const { frictionPerFrame, minVelocity, wallBounceDamping } = physics;
+  const {
+    frictionPerFrame,
+    frameScale = 1,
+    minVelocity,
+    wallBounceDamping,
+  } = physics;
   const minX = BOARD_PLAYFIELD_INSET + radiusPercent;
   const maxX = 100 - BOARD_PLAYFIELD_INSET - radiusPercent;
   const minY = BOARD_PLAYFIELD_INSET + radiusPercent;
   const maxY = 100 - BOARD_PLAYFIELD_INSET - radiusPercent;
 
-  piece.x += piece.vx;
-  piece.y += piece.vy;
+  piece.x += piece.vx * frameScale;
+  piece.y += piece.vy * frameScale;
 
   if (piece.x < minX) {
     piece.x = minX;
@@ -366,8 +404,9 @@ function updatePieceWithWalls(piece, radiusPercent, physics) {
     piece.vy = -Math.abs(piece.vy) * wallBounceDamping;
   }
 
-  piece.vx *= frictionPerFrame;
-  piece.vy *= frictionPerFrame;
+  const frictionScale = Math.pow(frictionPerFrame, frameScale);
+  piece.vx *= frictionScale;
+  piece.vy *= frictionScale;
   stopSmallVelocity(piece, minVelocity);
 }
 
@@ -535,7 +574,7 @@ function syncPieceState(pieces) {
 function isPieceInPocket(piece, pocketRadiusPercent) {
   return getPocketCenters().some((pocket) => {
     const distance = Math.hypot(piece.x - pocket.x, piece.y - pocket.y);
-    return distance <= pocketRadiusPercent - piece.radius * 0.35;
+    return distance <= pocketRadiusPercent - piece.radius * POCKET_CAPTURE_FORGIVENESS;
   });
 }
 
@@ -546,14 +585,26 @@ function handlePocketedPieces(boardState, boardSize, audioEvents) {
 
   boardState.coins = boardState.coins.filter((coin) => {
     const coinRadius = canvasToPercent(boardSize, getCoinRadius(boardSize, coin.type));
-    const isPocketed = isPieceInPocket(
-      { ...coin, radius: coinRadius },
-      pocketRadiusPercent
-    );
+    const pocket = getPocketCenters().find((candidatePocket) => {
+      const distance = Math.hypot(coin.x - candidatePocket.x, coin.y - candidatePocket.y);
+      return distance <= pocketRadiusPercent - coinRadius * POCKET_CAPTURE_FORGIVENESS;
+    });
+    const isPocketed = Boolean(pocket);
 
     if (isPocketed) {
       pocketedCoinCount += 1;
       pocketedCoinTypes.push(coin.type);
+      boardState.pocketAnimations.push({
+        id: `${coin.id}-${performance.now()}`,
+        type: coin.type,
+        startX: coin.x,
+        startY: coin.y,
+        pocketX: pocket.x,
+        pocketY: pocket.y,
+        progress: 0,
+        rotation: (coin.x + coin.y) * 0.08,
+        spin: (coin.x <= 50 ? -1 : 1) * (coin.y <= 50 ? 1 : -1) * 0.3,
+      });
     }
 
     return !isPocketed;
@@ -600,6 +651,20 @@ function handlePocketedPieces(boardState, boardSize, audioEvents) {
   }
 }
 
+function updatePocketAnimations(boardState, deltaFrames = 1) {
+  if (!boardState.pocketAnimations?.length) {
+    return;
+  }
+
+  boardState.pocketAnimations = boardState.pocketAnimations
+    .map((animation) => ({
+      ...animation,
+      progress: animation.progress + deltaFrames / POCKET_ANIMATION_DURATION_FRAMES,
+      rotation: animation.rotation + animation.spin * deltaFrames,
+    }))
+    .filter((animation) => animation.progress < 1);
+}
+
 export function isAnyPieceMoving(boardState, minVelocity) {
   const { striker, coins } = boardState;
 
@@ -644,33 +709,55 @@ export function isStrikerOverlappingCoin(boardState, boardSize) {
 }
 
 export function updateBoardState(boardState, boardSize, physics, audioEvents = []) {
+  updatePocketAnimations(boardState, physics.deltaFrames ?? 1);
   const pieces = getBoardPieces(boardState, boardSize);
+  const deltaFrames = Math.max(physics.deltaFrames ?? 1, 0.01);
+  const maxVelocity = pieces.reduce(
+    (highestSpeed, piece) => Math.max(highestSpeed, Math.hypot(piece.vx, piece.vy)),
+    0
+  );
+  const smallestRadius = pieces.reduce(
+    (lowestRadius, piece) => Math.min(lowestRadius, piece.radius),
+    Number.POSITIVE_INFINITY
+  );
+  const safeTravelDistance =
+    smallestRadius === Number.POSITIVE_INFINITY ? 1 : Math.max(0.35, smallestRadius * 0.45);
+  const substeps = Math.max(
+    1,
+    Math.min(8, Math.ceil((maxVelocity * deltaFrames) / safeTravelDistance))
+  );
+  const stepPhysics = {
+    ...physics,
+    frameScale: deltaFrames / substeps,
+  };
 
-  pieces.forEach((piece) => {
-    updatePieceWithWalls(piece, piece.radius, physics);
-  });
+  for (let step = 0; step < substeps; step += 1) {
+    pieces.forEach((piece) => {
+      updatePieceWithWalls(piece, piece.radius, stepPhysics);
+    });
 
-  for (let pass = 0; pass < 3; pass += 1) {
-    for (let firstIndex = 0; firstIndex < pieces.length; firstIndex += 1) {
-      for (
-        let secondIndex = firstIndex + 1;
-        secondIndex < pieces.length;
-        secondIndex += 1
-      ) {
-        resolvePieceCollision(
-          pieces[firstIndex],
-          pieces[secondIndex],
-          physics,
-          audioEvents
-        );
+    for (let pass = 0; pass < 3; pass += 1) {
+      for (let firstIndex = 0; firstIndex < pieces.length; firstIndex += 1) {
+        for (
+          let secondIndex = firstIndex + 1;
+          secondIndex < pieces.length;
+          secondIndex += 1
+        ) {
+          resolvePieceCollision(
+            pieces[firstIndex],
+            pieces[secondIndex],
+            physics,
+            audioEvents
+          );
+        }
       }
     }
-  }
 
-  pieces.forEach((piece) => {
-    keepPieceInsideBounds(piece, piece.radius);
-    stopSmallVelocity(piece, physics.minVelocity);
-  });
+    pieces.forEach((piece) => {
+      keepPieceInsideBounds(piece, piece.radius);
+      stopSmallVelocity(piece, physics.minVelocity);
+    });
+  }
 
   syncPieceState(pieces);
   handlePocketedPieces(boardState, boardSize, audioEvents);

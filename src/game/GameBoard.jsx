@@ -45,6 +45,7 @@ import createSoundManager from './createSoundManager';
 import { drawBoardScene } from './boardRenderer';
 
 function GameBoard() {
+  const STRIKER_POCKET_PENALTY = 20;
   const { boardSize } = useGameDimensions();
   const [activePlayer, setActivePlayer] = useState(1);
   const [scores, setScores] = useState({
@@ -660,9 +661,12 @@ function GameBoard() {
       const now = performance.now();
       const previousFrameTime = placementMotionRef.current.lastFrameTime;
       placementMotionRef.current.lastFrameTime = now;
+      const deltaSeconds = previousFrameTime
+        ? Math.min((now - previousFrameTime) / 1000, 0.05)
+        : 1 / 60;
+      const deltaFrames = deltaSeconds * 60;
 
       if (previousFrameTime) {
-        const deltaSeconds = Math.min((now - previousFrameTime) / 1000, 0.05);
         const moveDirection =
           gameStartedRef.current
             ? (placementInputRef.current.rightPressed ? 1 : 0) -
@@ -709,6 +713,7 @@ function GameBoard() {
           {
             collisionBounceDamping: COLLISION_BOUNCE_DAMPING,
             collisionTangentialDamping: COLLISION_TANGENTIAL_DAMPING,
+            deltaFrames,
             frictionPerFrame: FRICTION_PER_FRAME,
             minVelocity: MIN_VELOCITY,
             strikerGlancingTangentBoost: STRIKER_GLANCING_TANGENT_BOOST,
@@ -763,7 +768,9 @@ function GameBoard() {
       if (gameStartedRef.current && boardStateRef.current.shotInProgress && !isMovingNow) {
         const shotSummary = finishShot(boardStateRef.current);
         shotTimerResetAppliedRef.current = false;
-        const scorePenalty = shotSummary.strikerPocketed ? 1 : 0;
+        const scorePenalty = shotSummary.strikerPocketed
+          ? STRIKER_POCKET_PENALTY
+          : 0;
         const blackCount = shotSummary.pocketedCoinTypes.filter(
           (type) => type === 'black'
         ).length;
